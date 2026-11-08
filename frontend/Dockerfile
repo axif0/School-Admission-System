@@ -13,16 +13,13 @@ FROM build AS test
 WORKDIR /app
 CMD ["npm", "test"]
 
-# Production nginx stage
-FROM nginx:alpine AS final
+# Production unprivileged nginx stage
+FROM nginxinc/nginx-unprivileged:alpine AS final
 
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY entrypoint.sh /docker-entrypoint-custom.sh
+COPY docker-entrypoint.d/40-runtime-config.sh /docker-entrypoint.d/40-runtime-config.sh
 
-RUN chmod +x /docker-entrypoint-custom.sh
+EXPOSE 8080
 
-EXPOSE 80
-
-ENTRYPOINT ["/docker-entrypoint-custom.sh"]
 CMD ["nginx", "-g", "daemon off;"]
