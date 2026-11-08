@@ -11,8 +11,8 @@
 
 set -euo pipefail
 
-BACKEND1="http://localhost:8080"
-BACKEND2="http://localhost:8081"
+BACKEND1="${BACKEND1:-http://localhost:8080}"
+BACKEND2="${BACKEND2:-http://localhost:8081}"
 TOTAL_SEATS=15
 BURST_COUNT=100
 
