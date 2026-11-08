@@ -67,11 +67,19 @@ public class SchoolAdmissionFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
     private readonly int _holdDurationSeconds;
+    private readonly bool _rateLimitEnabled;
+    private readonly int _rateLimitPerStudent;
 
-    public SchoolAdmissionFactory(string connectionString, int holdDurationSeconds = 600)
+    public SchoolAdmissionFactory(
+        string connectionString,
+        int holdDurationSeconds = 600,
+        bool rateLimitEnabled = false,
+        int rateLimitPerStudent = 10)
     {
         _connectionString = connectionString;
         _holdDurationSeconds = holdDurationSeconds;
+        _rateLimitEnabled = rateLimitEnabled;
+        _rateLimitPerStudent = rateLimitPerStudent;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -82,7 +90,9 @@ public class SchoolAdmissionFactory : WebApplicationFactory<Program>
             {
                 ["ConnectionStrings:Default"] = _connectionString,
                 ["HOLD_DURATION_SECONDS"] = _holdDurationSeconds.ToString(),
-                ["CORS_ALLOWED_ORIGINS"] = "http://localhost:3000"
+                ["CORS_ALLOWED_ORIGINS"] = "http://localhost:3000",
+                ["RATE_LIMIT_ENABLED"] = _rateLimitEnabled.ToString(),
+                ["RATE_LIMIT_HOLDS_PER_MINUTE_PER_STUDENT"] = _rateLimitPerStudent.ToString()
             });
         });
     }

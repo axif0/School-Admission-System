@@ -1,8 +1,10 @@
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using SchoolAdmission.Api.Background;
 using SchoolAdmission.Api.Configuration;
+using SchoolAdmission.Api.Contracts;
 using SchoolAdmission.Api.Data;
 using SchoolAdmission.Api.Data.Abstractions;
 using SchoolAdmission.Api.Endpoints;
@@ -10,6 +12,7 @@ using SchoolAdmission.Api.Middleware;
 using SchoolAdmission.Api.Services;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -92,6 +95,46 @@ if (!connStr.Contains("Maximum Pool Size"))
     connBuilder.MaxPoolSize = poolSize;
 }
 
+// ---- Rate Limiter (Built-in, Configurable) ----
+builder.Services.AddRateLimiter(opt =>
+{
+    opt.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    opt.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        context.HttpContext.Response.Headers.RetryAfter = "60";
+        var body = new ErrorResponse(new ErrorDetail("TOO_MANY_REQUESTS", "Rate limit exceeded. Please wait before retrying."));
+        await context.HttpContext.Response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        }), token);
+    };
+
+    opt.AddPolicy("HoldRateLimit", httpContext =>
+    {
+        var rateOpts = httpContext.RequestServices.GetRequiredService<IOptions<RateLimitOptions>>().Value;
+        if (!rateOpts.Enabled)
+        {
+            return RateLimitPartition.GetNoLimiter("unlimited");
+        }
+
+        var studentId = httpContext.Request.Headers["X-Student-Id"].FirstOrDefault()?.Trim();
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var partitionKey = !string.IsNullOrEmpty(studentId) ? $"student:{studentId}" : $"ip:{ip}";
+
+        var limit = !string.IsNullOrEmpty(studentId)
+            ? rateOpts.HoldsPerMinutePerStudent
+            : rateOpts.RequestsPerMinutePerIp;
+
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = limit,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
+});
+
 // ---- Services ----
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(connBuilder.ConnectionString));
@@ -155,8 +198,11 @@ var app = builder.Build();
 // ---- Middleware ----
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseCors();
+app.UseRateLimiter();
 
-if (app.Environment.IsDevelopment())
+var obsOptions = app.Services.GetRequiredService<IOptions<ObservabilityOptions>>().Value;
+var isSwaggerActive = obsOptions.SwaggerEnabled ?? app.Environment.IsDevelopment();
+if (isSwaggerActive)
 {
     app.UseSwagger();
     app.UseSwaggerUI();

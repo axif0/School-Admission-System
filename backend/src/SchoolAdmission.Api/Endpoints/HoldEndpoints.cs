@@ -17,7 +17,7 @@ public static class HoldEndpoints
             var studentId = StudentIdValidation.ValidateAndGet(ctx.Request);
             var result = await svc.CreateHoldAsync(classId, studentId, ct);
             return Results.Created($"/holds/{result.HoldId}", result);
-        });
+        }).RequireRateLimiting("HoldRateLimit");
 
         // GET /holds/{holdId}
         app.MapGet("/holds/{holdId}", async (
@@ -39,7 +39,7 @@ public static class HoldEndpoints
             var studentId = StudentIdValidation.ValidateAndGet(ctx.Request);
             var result = await svc.ConfirmHoldAsync(holdId, studentId, ct);
             return Results.Ok(result);
-        });
+        }).RequireRateLimiting("HoldRateLimit");
 
         // DELETE /holds/{holdId}
         app.MapDelete("/holds/{holdId}", async (
