@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, ClassItem, MyHoldItem, ApiError } from '../api/client';
-import { messages, getErrorMessage } from '../i18n/messages';
+import { Translation, getErrorMessage, Language } from '../i18n/messages';
 
 interface ClassListPageProps {
   studentId: string;
   isStudentIdValid: boolean;
+  t: Translation;
+  lang: Language;
 }
 
 export const ClassListPage: React.FC<ClassListPageProps> = ({
   studentId,
-  isStudentIdValid
+  isStudentIdValid,
+  t,
+  lang
 }) => {
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [myHolds, setMyHolds] = useState<MyHoldItem[]>([]);
@@ -18,11 +22,10 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
   const [applyingClassId, setApplyingClassId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [networkWarning, setNetworkWarning] = useState<boolean>(false);
-  
+
   const navigate = useNavigate();
   const isPollingRef = useRef<boolean>(false);
 
-  // Fetch classes and active holds
   const fetchData = async (isBackground = false) => {
     if (isPollingRef.current && isBackground) return;
     if (isBackground) isPollingRef.current = true;
@@ -37,7 +40,7 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
           const holds = await api.getMyHolds(studentId);
           setMyHolds(holds);
         } catch {
-          // ignore student holds failure in background
+          // ignore
         }
       } else {
         setMyHolds([]);
@@ -46,7 +49,7 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
       if (err instanceof ApiError && err.code === 'NETWORK_ERROR') {
         setNetworkWarning(true);
       } else if (!isBackground) {
-        setErrorMessage(getErrorMessage(err?.code, err?.message));
+        setErrorMessage(getErrorMessage(err?.code, err?.message, lang));
       }
     } finally {
       if (!isBackground) setLoading(false);
@@ -57,7 +60,6 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
   useEffect(() => {
     fetchData();
 
-    // 4-second polling, paused when tab is hidden
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         fetchData(true);
@@ -69,7 +71,7 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
 
   const handleApply = async (classId: string) => {
     if (!isStudentIdValid) {
-      setErrorMessage(messages.en.errors.INVALID_STUDENT_ID);
+      setErrorMessage(t.errors.INVALID_STUDENT_ID);
       return;
     }
 
@@ -80,15 +82,13 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
       const hold = await api.createHold(classId, studentId);
       navigate(`/holds/${hold.holdId}`);
     } catch (err: any) {
-      setErrorMessage(getErrorMessage(err?.code, err?.message));
-      // Re-fetch to update seat numbers
+      setErrorMessage(getErrorMessage(err?.code, err?.message, lang));
       fetchData();
     } finally {
       setApplyingClassId(null);
     }
   };
 
-  // Check if student has active or confirmed application in this class
   const getExistingHold = (classId: string) => {
     return myHolds.find(
       (h) => h.classId === classId && (h.status === 'HELD' || h.status === 'CONFIRMED')
@@ -97,20 +97,34 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
 
   return (
     <div style={{ maxWidth: '1000px', margin: '2rem auto', padding: '0 1rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: 0, color: '#0f172a' }}>{messages.en.classListTitle}</h1>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '1.5rem',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <div>
+          <h1 style={{ margin: 0, color: '#0f172a', fontSize: '1.65rem' }}>{t.classListTitle}</h1>
+          <p style={{ margin: '0.3rem 0 0', color: '#64748b', fontSize: '0.9rem' }}>
+            {t.seatsStatus} (স্বয়ংক্রিয়ভাবে প্রতি ৪ সেকেন্ডে আপডেট হয়)
+          </p>
+        </div>
         <Link
           to="/classes/new"
           style={{
-            backgroundColor: '#2563eb',
+            backgroundColor: '#0284c7',
             color: '#fff',
-            padding: '0.6rem 1.2rem',
-            borderRadius: '6px',
+            padding: '0.65rem 1.25rem',
+            borderRadius: '8px',
             textDecoration: 'none',
-            fontWeight: 600
+            fontWeight: 600,
+            fontSize: '0.92rem',
+            boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)'
           }}
         >
-          + {messages.en.navCreateClass}
+          + {t.navCreateClass}
         </Link>
       </div>
 
@@ -119,11 +133,12 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
           backgroundColor: '#fef3c7',
           color: '#92400e',
           padding: '0.75rem 1rem',
-          borderRadius: '6px',
+          borderRadius: '8px',
           marginBottom: '1rem',
-          border: '1px solid #f59e0b'
+          border: '1px solid #f59e0b',
+          fontSize: '0.9rem'
         }}>
-          ⚠️ {messages.en.errors.NETWORK_ERROR}
+          ⚠️ {t.errors.NETWORK_ERROR}
         </div>
       )}
 
@@ -131,75 +146,123 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
         <div style={{
           backgroundColor: '#fee2e2',
           color: '#b91c1c',
-          padding: '0.75rem 1rem',
-          borderRadius: '6px',
-          marginBottom: '1rem',
-          border: '1px solid #ef4444'
+          padding: '0.75rem 1.25rem',
+          borderRadius: '8px',
+          marginBottom: '1.25rem',
+          border: '1px solid #ef4444',
+          fontWeight: 500
         }}>
-          {errorMessage}
+          ❌ {errorMessage}
         </div>
       )}
 
       {loading ? (
-        <p>Loading available classes...</p>
+        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+          <p style={{ fontSize: '1.1rem' }}>ক্লাস তালিকা লোড হচ্ছে...</p>
+        </div>
       ) : classes.length === 0 ? (
         <div style={{
-          padding: '3rem',
+          padding: '3.5rem',
           textAlign: 'center',
-          backgroundColor: '#f8fafc',
-          borderRadius: '8px',
-          border: '1px dashed #cbd5e1'
+          backgroundColor: '#ffffff',
+          borderRadius: '12px',
+          border: '2px dashed #cbd5e1'
         }}>
-          <p style={{ color: '#64748b', fontSize: '1.1rem' }}>No classes or shifts have been created yet.</p>
+          <p style={{ color: '#475569', fontSize: '1.15rem', marginBottom: '1rem' }}>{t.noClassesYet}</p>
           <Link
             to="/classes/new"
             style={{
-              color: '#2563eb',
-              fontWeight: 600
+              color: '#0284c7',
+              fontWeight: 700,
+              textDecoration: 'none',
+              fontSize: '1rem'
             }}
           >
-            Create the first class shift →
+            {t.createFirstClass}
           </Link>
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: '1rem' }}>
+        <div style={{ display: 'grid', gap: '1.25rem' }}>
           {classes.map((cls) => {
             const existingHold = getExistingHold(cls.id);
             const isFull = cls.availableSeats <= 0;
             const isApplying = applyingClassId === cls.id;
+            const filledPercentage = Math.round(((cls.totalSeats - cls.availableSeats) / cls.totalSeats) * 100);
 
             return (
               <div
                 key={cls.id}
                 style={{
-                  backgroundColor: '#fff',
+                  backgroundColor: '#ffffff',
                   border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
+                  borderRadius: '12px',
                   padding: '1.5rem',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                  flexWrap: 'wrap',
+                  gap: '1.25rem',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
                 }}
               >
-                <div>
-                  <h3 style={{ margin: '0 0 0.5rem', color: '#1e293b' }}>{cls.name}</h3>
-                  <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.9rem' }}>
+                <div style={{ flex: '1 1 300px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <h3 style={{ margin: 0, color: '#0f172a', fontSize: '1.2rem' }}>{cls.name}</h3>
+                    {isFull && (
+                      <span style={{
+                        backgroundColor: '#fee2e2',
+                        color: '#b91c1c',
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700
+                      }}>
+                        {t.capacityFull}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Seat Counts */}
+                  <div style={{
+                    display: 'flex',
+                    gap: '1.25rem',
+                    fontSize: '0.92rem',
+                    marginBottom: '0.85rem',
+                    flexWrap: 'wrap'
+                  }}>
                     <span style={{ color: '#475569' }}>
-                      <strong>{cls.totalSeats}</strong> Total
+                      {t.totalSeats}: <strong style={{ color: '#0f172a' }}>{cls.totalSeats}</strong>
                     </span>
                     <span style={{ color: '#d97706' }}>
-                      <strong>{cls.heldSeats}</strong> Held
+                      {t.heldSeats}: <strong>{cls.heldSeats}</strong>
                     </span>
-                    <span style={{ color: '#059669' }}>
-                      <strong>{cls.confirmedSeats}</strong> Confirmed
+                    <span style={{ color: '#16a34a' }}>
+                      {t.confirmedSeats}: <strong>{cls.confirmedSeats}</strong>
                     </span>
                     <span style={{
-                      color: isFull ? '#dc2626' : '#2563eb',
+                      color: isFull ? '#dc2626' : '#0284c7',
                       fontWeight: 700
                     }}>
-                      <strong>{cls.availableSeats}</strong> Available
+                      {t.availableSeats}: <strong>{cls.availableSeats}</strong>
                     </span>
+                  </div>
+
+                  {/* Seat Progress Bar */}
+                  <div style={{
+                    width: '100%',
+                    maxWidth: '340px',
+                    height: '8px',
+                    backgroundColor: '#e2e8f0',
+                    borderRadius: '4px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      width: `${Math.min(100, filledPercentage)}%`,
+                      height: '100%',
+                      backgroundColor: isFull ? '#ef4444' : filledPercentage > 75 ? '#f59e0b' : '#10b981',
+                      transition: 'width 0.4s ease'
+                    }} />
                   </div>
                 </div>
 
@@ -208,34 +271,38 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
                     <Link
                       to={`/holds/${existingHold.holdId}`}
                       style={{
-                        backgroundColor: '#f1f5f9',
-                        color: '#0284c7',
-                        border: '1px solid #0284c7',
-                        padding: '0.6rem 1.2rem',
-                        borderRadius: '6px',
+                        backgroundColor: existingHold.status === 'CONFIRMED' ? '#dcfce7' : '#e0f2fe',
+                        color: existingHold.status === 'CONFIRMED' ? '#15803d' : '#0369a1',
+                        border: `1px solid ${existingHold.status === 'CONFIRMED' ? '#86efac' : '#7dd3fc'}`,
+                        padding: '0.7rem 1.4rem',
+                        borderRadius: '8px',
                         textDecoration: 'none',
-                        fontWeight: 600,
+                        fontWeight: 700,
+                        fontSize: '0.95rem',
                         display: 'inline-block'
                       }}
                     >
-                      {messages.en.viewApplicationButton} ({existingHold.status})
+                      {t.viewApplicationButton} ({existingHold.status})
                     </Link>
                   ) : (
                     <button
                       onClick={() => handleApply(cls.id)}
                       disabled={isFull || !isStudentIdValid || isApplying}
+                      title={!isStudentIdValid ? t.studentIdInvalid : undefined}
                       style={{
-                        backgroundColor: isFull || !isStudentIdValid ? '#94a3b8' : '#16a34a',
-                        color: '#fff',
+                        backgroundColor: isFull || !isStudentIdValid ? '#cbd5e1' : '#16a34a',
+                        color: isFull || !isStudentIdValid ? '#64748b' : '#ffffff',
                         border: 'none',
-                        padding: '0.6rem 1.4rem',
-                        borderRadius: '6px',
-                        fontWeight: 600,
+                        padding: '0.75rem 1.6rem',
+                        borderRadius: '8px',
+                        fontWeight: 700,
+                        fontSize: '1rem',
                         cursor: isFull || !isStudentIdValid || isApplying ? 'not-allowed' : 'pointer',
-                        opacity: isApplying ? 0.7 : 1
+                        boxShadow: isFull || !isStudentIdValid ? 'none' : '0 2px 6px rgba(22, 163, 74, 0.25)',
+                        transition: 'background-color 0.2s'
                       }}
                     >
-                      {isApplying ? messages.en.submitting : messages.en.applyButton}
+                      {isApplying ? t.submitting : t.applyButton}
                     </button>
                   )}
                 </div>

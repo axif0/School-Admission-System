@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
-import { messages, getErrorMessage } from '../i18n/messages';
+import { Translation, getErrorMessage, Language } from '../i18n/messages';
 
-export const CreateClassPage: React.FC = () => {
+interface CreateClassPageProps {
+  t: Translation;
+  lang: Language;
+}
+
+export const CreateClassPage: React.FC<CreateClassPageProps> = ({ t, lang }) => {
   const [name, setName] = useState('');
-  const [totalSeats, setTotalSeats] = useState<number | ''>(100);
+  const [totalSeats, setTotalSeats] = useState<number | ''>(120);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -15,11 +20,11 @@ export const CreateClassPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Please provide a class name.');
+      setError('অনুগ্রহ করে ক্লাসের নাম দিন।');
       return;
     }
     if (typeof totalSeats !== 'number' || totalSeats <= 0) {
-      setError('Total seats must be a positive number.');
+      setError('মোট সিট সংখ্যা ১ বা তার বেশি হতে হবে।');
       return;
     }
 
@@ -32,13 +37,13 @@ export const CreateClassPage: React.FC = () => {
         name: name.trim(),
         totalSeats
       });
-      setSuccess(messages.en.classCreatedSuccess);
+      setSuccess(t.classCreatedSuccess);
       setTimeout(() => navigate('/'), 1200);
     } catch (err: any) {
       if (err instanceof ApiError) {
-        setError(getErrorMessage(err.code, err.message));
+        setError(getErrorMessage(err.code, err.message, lang));
       } else {
-        setError(messages.en.errors.GENERIC_ERROR);
+        setError(t.errors.GENERIC_ERROR);
       }
     } finally {
       setLoading(false);
@@ -46,19 +51,19 @@ export const CreateClassPage: React.FC = () => {
   };
 
   return (
-    <div style={{ maxWidth: '600px', margin: '2rem auto', padding: '0 1rem' }}>
-      <h1 style={{ color: '#0f172a', marginBottom: '1.5rem' }}>{messages.en.createClassTitle}</h1>
+    <div style={{ maxWidth: '650px', margin: '2rem auto', padding: '0 1rem' }}>
+      <h1 style={{ color: '#0f172a', marginBottom: '1.5rem', fontSize: '1.65rem' }}>{t.createClassTitle}</h1>
 
       {error && (
         <div style={{
           backgroundColor: '#fee2e2',
           color: '#b91c1c',
-          padding: '0.75rem 1rem',
-          borderRadius: '6px',
+          padding: '0.85rem 1.25rem',
+          borderRadius: '8px',
           marginBottom: '1rem',
           border: '1px solid #ef4444'
         }}>
-          {error}
+          ❌ {error}
         </div>
       )}
 
@@ -66,41 +71,42 @@ export const CreateClassPage: React.FC = () => {
         <div style={{
           backgroundColor: '#dcfce7',
           color: '#15803d',
-          padding: '0.75rem 1rem',
-          borderRadius: '6px',
+          padding: '0.85rem 1.25rem',
+          borderRadius: '8px',
           marginBottom: '1rem',
-          border: '1px solid #22c55e'
+          border: '1px solid #22c55e',
+          fontWeight: 600
         }}>
           ✓ {success}
         </div>
       )}
 
       <form onSubmit={handleSubmit} style={{
-        backgroundColor: '#fff',
-        padding: '2rem',
-        borderRadius: '8px',
+        backgroundColor: '#ffffff',
+        padding: '2.25rem',
+        borderRadius: '12px',
         border: '1px solid #e2e8f0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+        boxShadow: '0 4px 12px rgba(0,0,0,0.04)'
       }}>
         <div style={{ marginBottom: '1.5rem' }}>
           <label
             htmlFor="class-name"
-            style={{ display: 'block', fontWeight: 600, marginBottom: '0.5rem', color: '#334155' }}
+            style={{ display: 'block', fontWeight: 700, marginBottom: '0.5rem', color: '#1e293b' }}
           >
-            {messages.en.className}
+            {t.className} <span style={{ color: '#ef4444' }}>*</span>
           </label>
           <input
             id="class-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={messages.en.classNamePlaceholder}
+            placeholder={t.classNamePlaceholder}
             required
             maxLength={100}
             style={{
               width: '100%',
-              padding: '0.7rem',
-              borderRadius: '6px',
+              padding: '0.8rem 1rem',
+              borderRadius: '8px',
               border: '1px solid #cbd5e1',
               fontSize: '1rem',
               boxSizing: 'border-box'
@@ -108,12 +114,12 @@ export const CreateClassPage: React.FC = () => {
           />
         </div>
 
-        <div style={{ marginBottom: '1.5rem' }}>
+        <div style={{ marginBottom: '1.75rem' }}>
           <label
             htmlFor="total-seats"
-            style={{ display: 'block', fontWeight: 600, marginBottom: '0.5rem', color: '#334155' }}
+            style={{ display: 'block', fontWeight: 700, marginBottom: '0.5rem', color: '#1e293b' }}
           >
-            {messages.en.totalSeats}
+            {t.totalSeats} <span style={{ color: '#ef4444' }}>*</span>
           </label>
           <input
             id="total-seats"
@@ -125,8 +131,8 @@ export const CreateClassPage: React.FC = () => {
             required
             style={{
               width: '100%',
-              padding: '0.7rem',
-              borderRadius: '6px',
+              padding: '0.8rem 1rem',
+              borderRadius: '8px',
               border: '1px solid #cbd5e1',
               fontSize: '1rem',
               boxSizing: 'border-box'
@@ -139,18 +145,18 @@ export const CreateClassPage: React.FC = () => {
             type="submit"
             disabled={loading}
             style={{
-              backgroundColor: '#2563eb',
-              color: '#fff',
+              backgroundColor: '#0284c7',
+              color: '#ffffff',
               border: 'none',
-              padding: '0.75rem 1.5rem',
-              borderRadius: '6px',
-              fontWeight: 600,
+              padding: '0.85rem 1.75rem',
+              borderRadius: '8px',
+              fontWeight: 700,
               fontSize: '1rem',
               cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.7 : 1
+              boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)'
             }}
           >
-            {loading ? messages.en.submitting : 'Save & Publish'}
+            {loading ? t.submitting : 'সংরক্ষণ করুন (Save Class)'}
           </button>
           <button
             type="button"
@@ -159,14 +165,14 @@ export const CreateClassPage: React.FC = () => {
               backgroundColor: '#f1f5f9',
               color: '#475569',
               border: '1px solid #cbd5e1',
-              padding: '0.75rem 1.5rem',
-              borderRadius: '6px',
+              padding: '0.85rem 1.5rem',
+              borderRadius: '8px',
               fontWeight: 600,
               fontSize: '1rem',
               cursor: 'pointer'
             }}
           >
-            Cancel
+            বাতিল
           </button>
         </div>
       </form>

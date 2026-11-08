@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, MyHoldItem, ApiError } from '../api/client';
-import { messages, getErrorMessage } from '../i18n/messages';
+import { Translation, getErrorMessage, Language } from '../i18n/messages';
 
 interface MyApplicationsPageProps {
   studentId: string;
   isStudentIdValid: boolean;
+  t: Translation;
+  lang: Language;
 }
 
 export const MyApplicationsPage: React.FC<MyApplicationsPageProps> = ({
   studentId,
-  isStudentIdValid
+  isStudentIdValid,
+  t,
+  lang
 }) => {
   const [holds, setHolds] = useState<MyHoldItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -30,9 +34,9 @@ export const MyApplicationsPage: React.FC<MyApplicationsPageProps> = ({
       setHolds(data);
     } catch (err: any) {
       if (err instanceof ApiError) {
-        setError(getErrorMessage(err.code, err.message));
+        setError(getErrorMessage(err.code, err.message, lang));
       } else {
-        setError(messages.en.errors.GENERIC_ERROR);
+        setError(t.errors.GENERIC_ERROR);
       }
     } finally {
       setLoading(false);
@@ -44,79 +48,82 @@ export const MyApplicationsPage: React.FC<MyApplicationsPageProps> = ({
   }, [studentId, isStudentIdValid]);
 
   return (
-    <div style={{ maxWidth: '900px', margin: '2rem auto', padding: '0 1rem' }}>
-      <h1 style={{ color: '#0f172a', marginBottom: '1.5rem' }}>{messages.en.myApplicationsTitle}</h1>
+    <div style={{ maxWidth: '950px', margin: '2rem auto', padding: '0 1rem' }}>
+      <h1 style={{ color: '#0f172a', marginBottom: '1.5rem', fontSize: '1.65rem' }}>{t.myApplicationsTitle}</h1>
 
       {!isStudentIdValid ? (
         <div style={{
           backgroundColor: '#eff6ff',
-          padding: '2rem',
-          borderRadius: '8px',
+          padding: '2.5rem',
+          borderRadius: '12px',
           border: '1px solid #bfdbfe',
           textAlign: 'center'
         }}>
-          <p style={{ color: '#1e40af', fontSize: '1.05rem', margin: 0 }}>
-            Please enter your 17-digit birth registration number in the top bar to view your applications.
+          <p style={{ color: '#1e40af', fontSize: '1.1rem', margin: 0 }}>
+            {t.enterIdPrompt}
           </p>
         </div>
       ) : error ? (
         <div style={{
           backgroundColor: '#fee2e2',
           color: '#b91c1c',
-          padding: '0.75rem 1rem',
-          borderRadius: '6px',
+          padding: '0.85rem 1.25rem',
+          borderRadius: '8px',
           border: '1px solid #ef4444'
         }}>
-          {error}
+          ❌ {error}
         </div>
       ) : loading ? (
-        <p>Loading your applications...</p>
+        <p style={{ color: '#64748b' }}>আবেদনের তালিকা লোড হচ্ছে...</p>
       ) : holds.length === 0 ? (
         <div style={{
-          backgroundColor: '#f8fafc',
-          padding: '3rem',
-          borderRadius: '8px',
-          border: '1px dashed #cbd5e1',
+          backgroundColor: '#ffffff',
+          padding: '3.5rem',
+          borderRadius: '12px',
+          border: '2px dashed #cbd5e1',
           textAlign: 'center'
         }}>
-          <p style={{ color: '#64748b', fontSize: '1.1rem', marginBottom: '1rem' }}>
-            {messages.en.noApplications}
+          <p style={{ color: '#64748b', fontSize: '1.15rem', marginBottom: '1.25rem' }}>
+            {t.noApplications}
           </p>
           <Link
             to="/"
             style={{
-              color: '#2563eb',
-              fontWeight: 600,
-              textDecoration: 'none'
+              color: '#0284c7',
+              fontWeight: 700,
+              textDecoration: 'none',
+              fontSize: '1rem'
             }}
           >
-            Browse available classes to apply →
+            {t.browseClasses}
           </Link>
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: '1rem' }}>
+        <div style={{ display: 'grid', gap: '1.25rem' }}>
           {holds.map((h) => (
             <div
               key={h.holdId}
               style={{
-                backgroundColor: '#fff',
-                padding: '1.5rem',
-                borderRadius: '8px',
+                backgroundColor: '#ffffff',
+                padding: '1.5rem 1.75rem',
+                borderRadius: '12px',
                 border: '1px solid #e2e8f0',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+                flexWrap: 'wrap',
+                gap: '1rem'
               }}
             >
               <div>
-                <h3 style={{ margin: '0 0 0.5rem', color: '#1e293b' }}>{h.className}</h3>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <h3 style={{ margin: '0 0 0.5rem', color: '#0f172a', fontSize: '1.2rem' }}>{h.className}</h3>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{
-                    padding: '0.2rem 0.6rem',
-                    borderRadius: '4px',
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '999px',
                     fontSize: '0.85rem',
-                    fontWeight: 700,
+                    fontWeight: 800,
                     backgroundColor:
                       h.status === 'CONFIRMED' ? '#dcfce7' :
                       h.status === 'HELD' ? '#e0f2fe' :
@@ -128,8 +135,8 @@ export const MyApplicationsPage: React.FC<MyApplicationsPageProps> = ({
                   }}>
                     {h.status}
                   </span>
-                  <span style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                    ID: {h.holdId}
+                  <span style={{ color: '#64748b', fontSize: '0.88rem' }}>
+                    আইডি: <code style={{ color: '#0f172a' }}>{h.holdId}</code>
                   </span>
                 </div>
               </div>
@@ -137,16 +144,17 @@ export const MyApplicationsPage: React.FC<MyApplicationsPageProps> = ({
               <Link
                 to={`/holds/${h.holdId}`}
                 style={{
-                  backgroundColor: '#2563eb',
-                  color: '#fff',
-                  padding: '0.55rem 1.2rem',
-                  borderRadius: '6px',
+                  backgroundColor: '#0284c7',
+                  color: '#ffffff',
+                  padding: '0.65rem 1.4rem',
+                  borderRadius: '8px',
                   textDecoration: 'none',
-                  fontWeight: 600,
-                  fontSize: '0.9rem'
+                  fontWeight: 700,
+                  fontSize: '0.92rem',
+                  boxShadow: '0 2px 4px rgba(2, 132, 199, 0.2)'
                 }}
               >
-                {messages.en.viewDetails} →
+                {t.viewDetails} →
               </Link>
             </div>
           ))}
