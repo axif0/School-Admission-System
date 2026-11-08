@@ -8,11 +8,13 @@ public class ClassService : IClassService
 {
     private readonly IClassStore _store;
     private readonly IdGenerator _idGen;
+    private readonly ClassQueryCoalescer _coalescer;
 
-    public ClassService(IClassStore store, IdGenerator idGen)
+    public ClassService(IClassStore store, IdGenerator idGen, ClassQueryCoalescer coalescer)
     {
         _store = store;
         _idGen = idGen;
+        _coalescer = coalescer;
     }
 
     public async Task<ClassResponse> CreateAsync(CreateClassRequest req, CancellationToken ct = default)
@@ -24,12 +26,14 @@ public class ClassService : IClassService
             throw AppException.ValidationError("'totalSeats' must be between 1 and 100000.");
 
         var id = _idGen.NewClassId();
-        return await _store.CreateClassAsync(id, name, req.TotalSeats, DateTime.UtcNow, ct);
+        var res = await _store.CreateClassAsync(id, name, req.TotalSeats, DateTime.UtcNow, ct);
+        _coalescer.OnWriteOccurred();
+        return res;
     }
 
     public async Task<List<ClassDetailResponse>> GetAllAsync(CancellationToken ct = default)
     {
-        return await _store.GetAllClassesAsync(ct);
+        return await _coalescer.ExecuteCoalescedAsync(() => _store.GetAllClassesAsync(ct));
     }
 
     public async Task<ClassDetailResponse> GetByIdAsync(string classId, CancellationToken ct = default)

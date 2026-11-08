@@ -58,15 +58,36 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
   };
 
   useEffect(() => {
+    let timeoutId: any;
+    let currentInterval = 4000;
+    let isCancelled = false;
+
+    const scheduleNext = (delay: number) => {
+      // ±20% jitter to prevent thundering herd stampedes
+      const jitter = (Math.random() - 0.5) * 0.4 * delay;
+      const actualDelay = Math.max(1000, delay + jitter);
+
+      timeoutId = setTimeout(async () => {
+        if (isCancelled) return;
+        if (document.visibilityState === 'visible') {
+          try {
+            await fetchData(true);
+            currentInterval = 4000; // Reset on successful poll
+          } catch {
+            currentInterval = Math.min(30000, currentInterval * 1.5); // Exponential backoff capped at 30s
+          }
+        }
+        if (!isCancelled) scheduleNext(currentInterval);
+      }, actualDelay);
+    };
+
     fetchData();
+    scheduleNext(currentInterval);
 
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchData(true);
-      }
-    }, 4000);
-
-    return () => clearInterval(interval);
+    return () => {
+      isCancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, [studentId, isStudentIdValid]);
 
   const handleApply = async (classId: string) => {

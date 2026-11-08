@@ -14,17 +14,20 @@ public class HoldService : IHoldService
     private readonly IdGenerator _idGen;
     private readonly IOptions<HoldOptions> _holdOptions;
     private readonly IOptions<DatabaseOptions> _dbOptions;
+    private readonly ClassQueryCoalescer _coalescer;
 
     public HoldService(
         IHoldStore store,
         IdGenerator idGen,
         IOptions<HoldOptions> holdOptions,
-        IOptions<DatabaseOptions> dbOptions)
+        IOptions<DatabaseOptions> dbOptions,
+        ClassQueryCoalescer coalescer)
     {
         _store = store;
         _idGen = idGen;
         _holdOptions = holdOptions;
         _dbOptions = dbOptions;
+        _coalescer = coalescer;
     }
 
     private int HoldDurationSeconds => _holdOptions.Value.HoldDurationSeconds;
@@ -72,6 +75,7 @@ public class HoldService : IHoldService
 
                 // 8. Commit with CancellationToken.None to preserve durability against client aborts
                 await tx.CommitAsync(CancellationToken.None);
+                _coalescer.OnWriteOccurred();
 
                 return new CreateHoldResponse(
                     holdId,
@@ -140,6 +144,7 @@ public class HoldService : IHoldService
 
                 await tx.ConfirmHoldAsync(holdId, now, ct);
                 await tx.CommitAsync(CancellationToken.None);
+                _coalescer.OnWriteOccurred();
 
                 return new ConfirmHoldResponse(holdId, HoldStatus.Confirmed);
             }
@@ -198,6 +203,7 @@ public class HoldService : IHoldService
 
                 await tx.CancelHoldAsync(holdId, now, ct);
                 await tx.CommitAsync(CancellationToken.None);
+                _coalescer.OnWriteOccurred();
             }
             catch
             {

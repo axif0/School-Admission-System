@@ -96,6 +96,7 @@ if (!connStr.Contains("Maximum Pool Size"))
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(connBuilder.ConnectionString));
 
+builder.Services.AddSingleton<ClassQueryCoalescer>();
 builder.Services.AddScoped<IClassStore, PostgresClassStore>();
 builder.Services.AddScoped<IHoldStore, PostgresHoldStore>();
 builder.Services.AddScoped<IClassService, ClassService>();

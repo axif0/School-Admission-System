@@ -85,8 +85,9 @@ public class HoldServiceUnitTests
     private readonly IdGenerator _idGen = new();
     private readonly IOptions<HoldOptions> _holdOptions = Options.Create(new HoldOptions());
     private readonly IOptions<DatabaseOptions> _dbOptions = Options.Create(new DatabaseOptions());
+    private readonly ClassQueryCoalescer _coalescer = new();
 
-    private HoldService CreateSvc() => new(_fakeStore, _idGen, _holdOptions, _dbOptions);
+    private HoldService CreateSvc() => new(_fakeStore, _idGen, _holdOptions, _dbOptions, _coalescer);
 
     [Fact]
     public async Task CreateHold_FullClass_ThrowsNoSeatsAvailable()
