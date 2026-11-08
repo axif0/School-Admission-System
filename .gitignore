@@ -28,3 +28,7 @@ Thumbs.db
 # Test results
 TestResults/
 coverage/
+
+# Backups
+backups/*.dump
+backups/*.dump.sha256
