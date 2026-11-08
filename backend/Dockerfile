@@ -7,13 +7,12 @@ COPY ["SchoolAdmission.sln", "./"]
 COPY ["src/SchoolAdmission.Api/SchoolAdmission.Api.csproj", "src/SchoolAdmission.Api/"]
 COPY ["tests/SchoolAdmission.Tests/SchoolAdmission.Tests.csproj", "tests/SchoolAdmission.Tests/"]
 
-RUN dotnet restore
-
-# Copy all source code
+# Copy all source code first
 COPY . .
 
-# Build
-RUN dotnet build -c Release --no-restore
+# Restore and build together
+RUN dotnet restore
+RUN dotnet build -c Release
 
 # Test stage for running tests inside Docker
 FROM build AS test
