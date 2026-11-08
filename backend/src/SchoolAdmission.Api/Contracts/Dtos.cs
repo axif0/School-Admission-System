@@ -47,5 +47,5 @@ public record MyHoldResponse(
     DateTime ExpiresAt
 );
 
-public record ErrorDetail(string Code, string Message);
+public record ErrorDetail(string Code, string Message, string? TraceId = null);
 public record ErrorResponse(ErrorDetail Error);

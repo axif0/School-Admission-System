@@ -83,7 +83,8 @@ public class PostgresHoldStore : IHoldStore
                 reader.GetString(0),
                 reader.GetString(1),
                 reader.GetString(2),
-                DateTime.SpecifyKind(reader.GetDateTime(3), DateTimeKind.Utc));
+                DateTime.SpecifyKind(reader.GetDateTime(3), DateTimeKind.Utc),
+                DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc));
         }
         finally
         {

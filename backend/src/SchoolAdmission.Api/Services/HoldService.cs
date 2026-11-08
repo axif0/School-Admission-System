@@ -5,6 +5,7 @@ using SchoolAdmission.Api.Contracts;
 using SchoolAdmission.Api.Data.Abstractions;
 using SchoolAdmission.Api.Domain;
 using SchoolAdmission.Api.Middleware;
+using SchoolAdmission.Api.Observability;
 
 namespace SchoolAdmission.Api.Services;
 
@@ -15,19 +16,22 @@ public class HoldService : IHoldService
     private readonly IOptions<HoldOptions> _holdOptions;
     private readonly IOptions<DatabaseOptions> _dbOptions;
     private readonly ClassQueryCoalescer _coalescer;
+    private readonly AppMetrics? _metrics;
 
     public HoldService(
         IHoldStore store,
         IdGenerator idGen,
         IOptions<HoldOptions> holdOptions,
         IOptions<DatabaseOptions> dbOptions,
-        ClassQueryCoalescer coalescer)
+        ClassQueryCoalescer coalescer,
+        AppMetrics? metrics = null)
     {
         _store = store;
         _idGen = idGen;
         _holdOptions = holdOptions;
         _dbOptions = dbOptions;
         _coalescer = coalescer;
+        _metrics = metrics;
     }
 
     private int HoldDurationSeconds => _holdOptions.Value.HoldDurationSeconds;
@@ -38,7 +42,10 @@ public class HoldService : IHoldService
         // 1. Fast path: unlocked pre-check to reject full classes without lock contention
         var fastCheck = await _store.CheckFastPathSeatsAsync(classId, ct);
         if (fastCheck.Found && fastCheck.ActiveCount >= fastCheck.TotalSeats)
+        {
+            _metrics?.HoldsRejected.Add(1, new KeyValuePair<string, object?>("reason", "SEATS_FULL"));
             throw AppException.NoSeatsAvailable();
+        }
 
         var holdId = _idGen.NewHoldId();
         var duration = HoldDurationSeconds;
@@ -62,12 +69,18 @@ public class HoldService : IHoldService
                 // 5. Invariant: student can only have 1 active hold per class
                 var hasActive = await tx.HasActiveHoldForStudentAsync(classId, studentId, ct);
                 if (hasActive)
+                {
+                    _metrics?.HoldsRejected.Add(1, new KeyValuePair<string, object?>("reason", "ACTIVE_HOLD_EXISTS"));
                     throw AppException.AlreadyApplied();
+                }
 
                 // 6. Invariant: held + confirmed <= totalSeats
                 var activeCount = await tx.CountActiveSeatsAsync(classId, ct);
                 if (activeCount >= totalSeats.Value)
+                {
+                    _metrics?.HoldsRejected.Add(1, new KeyValuePair<string, object?>("reason", "SEATS_FULL"));
                     throw AppException.NoSeatsAvailable();
+                }
 
                 // 7. Insert new hold
                 var expiresAt = now.AddSeconds(duration);
@@ -76,6 +89,7 @@ public class HoldService : IHoldService
                 // 8. Commit with CancellationToken.None to preserve durability against client aborts
                 await tx.CommitAsync(CancellationToken.None);
                 _coalescer.OnWriteOccurred();
+                _metrics?.HoldsCreated.Add(1);
 
                 return new CreateHoldResponse(
                     holdId,
@@ -139,12 +153,18 @@ public class HoldService : IHoldService
                 if (lockState.Status == HoldStatus.Confirmed)
                 {
                     await tx.CommitAsync(CancellationToken.None);
+                    _metrics?.ConfirmsTotal.Add(1, new KeyValuePair<string, object?>("result", "ALREADY_CONFIRMED"));
                     return new ConfirmHoldResponse(holdId, HoldStatus.Confirmed);
                 }
 
                 await tx.ConfirmHoldAsync(holdId, now, ct);
                 await tx.CommitAsync(CancellationToken.None);
                 _coalescer.OnWriteOccurred();
+                _metrics?.ConfirmsTotal.Add(1, new KeyValuePair<string, object?>("result", "CONFIRMED"));
+                if (hold.CreatedAt != default)
+                {
+                    _metrics?.HoldDurationSeconds.Record((now - hold.CreatedAt).TotalSeconds);
+                }
 
                 return new ConfirmHoldResponse(holdId, HoldStatus.Confirmed);
             }
@@ -204,6 +224,7 @@ public class HoldService : IHoldService
                 await tx.CancelHoldAsync(holdId, now, ct);
                 await tx.CommitAsync(CancellationToken.None);
                 _coalescer.OnWriteOccurred();
+                _metrics?.CancelsTotal.Add(1);
             }
             catch
             {

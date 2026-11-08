@@ -58,7 +58,9 @@ public class ObservabilityOptions
 {
     public const string SectionName = "Observability";
 
-    public bool MetricsEnabled { get; set; } = false;
+    public string LogFormat { get; set; } = "text";
+
+    public bool MetricsEnabled { get; set; } = true;
 
     public bool? SwaggerEnabled { get; set; } = null;
 }

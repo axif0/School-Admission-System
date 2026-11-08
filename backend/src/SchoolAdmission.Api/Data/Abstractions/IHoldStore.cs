@@ -6,7 +6,7 @@ public record FastPathSeatCheckResult(bool Found, int TotalSeats, int ActiveCoun
 
 public record HoldRecord(string Id, string ClassId, string Status, DateTime ExpiresAt, DateTime ServerTime);
 
-public record HoldOwnershipRecord(string ClassId, string Status, string StudentId, DateTime ExpiresAt);
+public record HoldOwnershipRecord(string ClassId, string Status, string StudentId, DateTime ExpiresAt, DateTime CreatedAt = default);
 
 public record HoldLockState(string Status, DateTime ExpiresAt);
 

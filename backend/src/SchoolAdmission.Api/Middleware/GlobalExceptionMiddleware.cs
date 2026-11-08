@@ -25,7 +25,7 @@ public class GlobalExceptionMiddleware
             _logger.LogWarning("AppException: {Code} {Message}", ex.Code, ex.Message);
             context.Response.StatusCode = ex.StatusCode;
             context.Response.ContentType = "application/json";
-            var body = new ErrorResponse(new ErrorDetail(ex.Code, ex.Message));
+            var body = new ErrorResponse(new ErrorDetail(ex.Code, ex.Message, context.TraceIdentifier));
             await context.Response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -40,7 +40,7 @@ public class GlobalExceptionMiddleware
             context.Response.StatusCode = 503;
             context.Response.ContentType = "application/json";
             var body = new ErrorResponse(new ErrorDetail("TEMPORARILY_BUSY",
-                "The system is temporarily busy. Please try again in a moment."));
+                "The system is temporarily busy. Please try again in a moment.", context.TraceIdentifier));
             await context.Response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -52,7 +52,7 @@ public class GlobalExceptionMiddleware
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
             var body = new ErrorResponse(new ErrorDetail("INTERNAL_ERROR",
-                "An unexpected error occurred. Please try again later."));
+                "An unexpected error occurred. Please try again later.", context.TraceIdentifier));
             await context.Response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase

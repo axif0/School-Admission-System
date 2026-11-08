@@ -46,7 +46,7 @@ public static class HoldQueries
         VALUES (@id, @classId, @studentId, 'HELD', @expiresAt, @now)";
 
     public const string SelectHoldForOwnershipCheck = @"
-        SELECT class_id, status, student_id, expires_at
+        SELECT class_id, status, student_id, expires_at, created_at
         FROM holds WHERE id = @holdId";
 
     public const string LockHoldRow = @"

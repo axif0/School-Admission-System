@@ -60,10 +60,10 @@ public class ClassQueryCoalescerTests
 
         // 3. Caller B arrives AFTER the write
         // Caller B must NOT join Caller A's old flight because that would yield stale data.
-        var callerB = coalescer.ExecuteCoalescedAsync(async () =>
+        var callerB = coalescer.ExecuteCoalescedAsync(() =>
         {
             Interlocked.Increment(ref queryExecutionCount);
-            return new List<ClassDetailResponse>();
+            return Task.FromResult(new List<ClassDetailResponse>());
         });
 
         tcs.SetResult();

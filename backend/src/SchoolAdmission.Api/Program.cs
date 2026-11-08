@@ -9,12 +9,35 @@ using SchoolAdmission.Api.Data;
 using SchoolAdmission.Api.Data.Abstractions;
 using SchoolAdmission.Api.Endpoints;
 using SchoolAdmission.Api.Middleware;
+using SchoolAdmission.Api.Observability;
 using SchoolAdmission.Api.Services;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ---- Logging Configuration ----
+var logFormat = builder.Configuration["LOG_FORMAT"] ?? "text";
+builder.Logging.ClearProviders();
+if (logFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Logging.AddJsonConsole(opt =>
+    {
+        opt.IncludeScopes = true;
+        opt.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+        opt.JsonWriterOptions = new System.Text.Json.JsonWriterOptions { Indented = false };
+    });
+}
+else
+{
+    builder.Logging.AddSimpleConsole(opt =>
+    {
+        opt.IncludeScopes = true;
+        opt.SingleLine = true;
+        opt.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
+    });
+}
 
 // ---- Strongly-Typed Options ----
 builder.Services.AddOptions<HoldOptions>()
@@ -75,6 +98,8 @@ builder.Services.AddOptions<ObservabilityOptions>()
     .Configure<IConfiguration>((opt, config) =>
     {
         config.GetSection(ObservabilityOptions.SectionName).Bind(opt);
+        if (config["LOG_FORMAT"] is { } lf)
+            opt.LogFormat = lf;
         if (bool.TryParse(config["METRICS_ENABLED"], out var metrics))
             opt.MetricsEnabled = metrics;
         if (bool.TryParse(config["SWAGGER_ENABLED"], out var swagger))
@@ -103,7 +128,7 @@ builder.Services.AddRateLimiter(opt =>
     {
         context.HttpContext.Response.ContentType = "application/json";
         context.HttpContext.Response.Headers.RetryAfter = "60";
-        var body = new ErrorResponse(new ErrorDetail("TOO_MANY_REQUESTS", "Rate limit exceeded. Please wait before retrying."));
+        var body = new ErrorResponse(new ErrorDetail("TOO_MANY_REQUESTS", "Rate limit exceeded. Please wait before retrying.", context.HttpContext.TraceIdentifier));
         await context.HttpContext.Response.WriteAsync(JsonSerializer.Serialize(body, new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -140,6 +165,7 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(connBuilder.ConnectionString));
 
 builder.Services.AddSingleton<ClassQueryCoalescer>();
+builder.Services.AddSingleton<AppMetrics>();
 builder.Services.AddScoped<IClassStore, PostgresClassStore>();
 builder.Services.AddScoped<IHoldStore, PostgresHoldStore>();
 builder.Services.AddScoped<IClassService, ClassService>();
@@ -196,6 +222,7 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 var app = builder.Build();
 
 // ---- Middleware ----
+app.UseMiddleware<CorrelationMiddleware>();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseCors();
 app.UseRateLimiter();
@@ -229,6 +256,14 @@ await DatabaseMigrator.MigrateAsync(app.Services, logger);
 
 // ---- Endpoints ----
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
+
+app.MapGet("/metrics", (IOptions<ObservabilityOptions> obsOptions, AppMetrics metrics) =>
+{
+    if (!obsOptions.Value.MetricsEnabled)
+        return Results.NotFound();
+
+    return Results.Content(metrics.ToPrometheusFormat(), "text/plain; version=0.0.4");
+});
 
 app.MapGet("/health/ready", async (AppDbContext db) =>
 {
