@@ -12,7 +12,7 @@ This document records all choices where the assignment specification was silent,
 | No seats on apply | `409 NO_SEATS_AVAILABLE` | SPEC | Required by assignment specification. |
 | Cancel success code | `204 NoContent` | SPEC | Resource state transition complete; no body needed. |
 | ID format | `c_` + 12-char alphanumeric (classes), `h_` + 12-char (holds) | CHOICE | Unguessable, URL-safe identifiers prefixed for readability and test clarity. |
-| Standard error response shape | `{ "error": { "code": "...", "message": "..." } }` | CHOICE | Clear machine-readable error codes paired with human-readable explanations; no internal stack traces leaked. |
+| Standard error response shape | `{ "error": { "code": "...", "message": "...", "traceId": "..." } }` | CHOICE | Clear machine-readable error codes paired with human-readable explanations and request trace ID; no internal stack traces leaked. |
 | Check order for hold actions | 1) header `400` → 2) exists `404` → 3) ownership `403` → 4) state/business rule `409` | CHOICE | Natural defensive order: validate syntax before DB lookups, check ownership before exposing state conflict. |
 | Student already applied AND class full | `ALREADY_APPLIED` | CHOICE | Duplicate student check precedes seat count check inside the locked transaction. |
 | Missing/blank/invalid `X-Student-Id` | `400 INVALID_STUDENT_ID` | CHOICE | Header must be present, non-blank after trimming, $\le 64$ characters, no control characters. Format is kept lenient on backend to allow API tests with arbitrary test identifiers. |
@@ -69,3 +69,10 @@ This document records all choices where the assignment specification was silent,
 ## 4. Frontend Runtime Configuration & Clock Skew
 - **True Environment Variable (`API_URL`):** Docker nginx container generates `config.js` via an entrypoint script before starting nginx. This allows changing the backend URL at deployment time without rebuilding Vite assets.
 - **Clock Skew Compensation:** The frontend calculates the clock difference `offset = serverTime - clientNow` on fetching hold details, ensuring that client machine clock drift does not cause premature or delayed hold expiry.
+
+---
+
+## 5. Security & Performance Enhancements
+- **SingleFlight Query Coalescing:** Multiple concurrent requests for `GET /classes` share a single in-flight database query via `ClassQueryCoalescer`, protecting PostgreSQL from read stampedes while guaranteeing read-your-writes consistency across mutations.
+- **Configurable Rate Limiting:** Built-in sliding window rate limiter protects endpoints from brute force and denial of service (`RATE_LIMIT_ENABLED=true`).
+- **Non-Root Containers:** Backend runs as unprivileged `.NET` user (UID 1654), frontend runs under unprivileged Nginx (UID 101), with read-only root filesystems and explicit resource limits.

@@ -52,9 +52,34 @@ docker compose up --build
 ### URLs
 - **Frontend UI:** [http://localhost:3000](http://localhost:3000)
 - **Backend API:** [http://localhost:8080](http://localhost:8080)
-- **Health Check:** [http://localhost:8080/health](http://localhost:8080/health)
+- **Health Checks:**
+  - Liveness: [http://localhost:8080/health/live](http://localhost:8080/health/live)
+  - Readiness: [http://localhost:8080/health/ready](http://localhost:8080/health/ready)
+  - Backward-compatible: [http://localhost:8080/health](http://localhost:8080/health)
+- **Prometheus Metrics:** [http://localhost:8080/metrics](http://localhost:8080/metrics)
+- **Swagger UI:** [http://localhost:8080/swagger](http://localhost:8080/swagger)
+
+### Production Deployment (Multi-Replica + Edge Gateway)
+To run with scaled backend replicas behind an unprivileged Nginx edge gateway on port 80:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d --scale backend=2
+```
+Access via `http://localhost` (or `http://localhost:8090` for backend cluster direct).
 
 > **Note on Data Persistence:** Data is stored in the Docker named volume `school_admission_pgdata`. Running `docker compose down` and then `docker compose up` preserves all data.
+
+---
+
+## 📚 Comprehensive Documentation & ADRs
+
+| Document | Description |
+| :--- | :--- |
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Current production architecture + evolutionary Architecture A (PgBouncer/Redis) and Architecture B (Kafka/Streams event-driven) with Mermaid diagrams. |
+| **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** | Empirical k6 benchmark data (500 VU stampede, mixed read/write), EXPLAIN ANALYZE traces, and in-flight query coalescing. |
+| **[docs/SECURITY.md](docs/SECURITY.md)** | Threat model, STRIDE analysis, configurable sliding window rate limiter, non-root hardening, and production JWT/OIDC roadmap. |
+| **[docs/RUNBOOK.md](docs/RUNBOOK.md)** | Day-2 operations guide, zero-downtime rolling upgrades, advisory-lock migrations, disaster recovery, and incident triage cheat sheet. |
+| **[docs/FEEDBACK_RESPONSE.md](docs/FEEDBACK_RESPONSE.md)** | Line-by-line triage matrix responding to the technical audit (`feedback.md`). |
+| **[docs/adr/](docs/adr/)** | Architecture Decision Records: `0001` (DB row lock over Redis), `0002` (Raw SQL for locking), `0003` (Polling + coalescing over SSE), `0004` (Header identity), `0005` (Cancellation & durable commit). |
 
 ---
 
@@ -98,6 +123,18 @@ dotnet test
 ```bash
 cd frontend
 npm test
+```
+
+### 3. Run Strict Contract Smoke Test
+Asserts exact Section 6 response codes, uppercase status enums, and JSON camelCase field shapes:
+```bash
+./scripts/contract-smoke.sh
+```
+
+### 4. Run k6 Concurrency Benchmarks
+```bash
+docker run --rm -i --network=host grafana/k6:latest run - < loadtest/stampede.js
+docker run --rm -i --network=host grafana/k6:latest run - < loadtest/mixed.js
 ```
 
 ---

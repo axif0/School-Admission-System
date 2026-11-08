@@ -29,3 +29,15 @@ The following incidents occurred during implementation and were caught and corre
 4. **Vite `import.meta.env` Type Resolution in Strict Bundler Mode**
    - *Issue:* `tsc` reported `TS2339: Property 'env' does not exist on type 'ImportMeta'`.
    - *Fix:* Safely typed access as `((import.meta as any).env?.VITE_API_URL)` to satisfy TypeScript compilation while retaining dynamic runtime fallback to `window.__APP_CONFIG__.API_URL`.
+
+5. **Docker Build Host Object Leak**
+   - *Issue:* Docker build failed with `NETSDK1064: Package Microsoft.CodeAnalysis.Analyzers was not found` because local host `bin/` and `obj/` were copied into Linux container layers.
+   - *Fix:* Updated `.dockerignore` to recursively match `**/bin/` and `**/obj/`.
+
+6. **Static Container Name Preventing Docker Compose Scaling**
+   - *Issue:* Running `docker compose up --scale backend=2` produced warnings due to a fixed `container_name: school_admission_backend`.
+   - *Fix:* Removed static container name on the scalable service so Docker Compose can generate distinct container names (`school-admission-system-backend-1`, `backend-2`).
+
+7. **Transitive Vulnerability Warnings in Test Suite**
+   - *Issue:* Vulnerability scan flagged transitive `System.Net.Http 4.3.0` via legacy `xunit 2.5.3`.
+   - *Fix:* Upgraded `xunit` to 2.9.2 and `coverlet.collector` to 6.0.2, achieving 0 vulnerable packages.
