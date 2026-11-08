@@ -11,19 +11,21 @@ public static class HoldEndpoints
         app.MapPost("/classes/{classId}/holds", async (
             string classId,
             HttpContext ctx,
-            HoldService svc) =>
+            HoldService svc,
+            CancellationToken ct) =>
         {
             var studentId = StudentIdValidation.ValidateAndGet(ctx.Request);
-            var result = await svc.CreateHoldAsync(classId, studentId);
+            var result = await svc.CreateHoldAsync(classId, studentId, ct);
             return Results.Created($"/holds/{result.HoldId}", result);
         });
 
         // GET /holds/{holdId}
         app.MapGet("/holds/{holdId}", async (
             string holdId,
-            HoldService svc) =>
+            HoldService svc,
+            CancellationToken ct) =>
         {
-            var result = await svc.GetHoldAsync(holdId);
+            var result = await svc.GetHoldAsync(holdId, ct);
             return Results.Ok(result);
         });
 
@@ -31,10 +33,11 @@ public static class HoldEndpoints
         app.MapPost("/holds/{holdId}/confirm", async (
             string holdId,
             HttpContext ctx,
-            HoldService svc) =>
+            HoldService svc,
+            CancellationToken ct) =>
         {
             var studentId = StudentIdValidation.ValidateAndGet(ctx.Request);
-            var result = await svc.ConfirmHoldAsync(holdId, studentId);
+            var result = await svc.ConfirmHoldAsync(holdId, studentId, ct);
             return Results.Ok(result);
         });
 
@@ -42,20 +45,22 @@ public static class HoldEndpoints
         app.MapDelete("/holds/{holdId}", async (
             string holdId,
             HttpContext ctx,
-            HoldService svc) =>
+            HoldService svc,
+            CancellationToken ct) =>
         {
             var studentId = StudentIdValidation.ValidateAndGet(ctx.Request);
-            await svc.CancelHoldAsync(holdId, studentId);
+            await svc.CancelHoldAsync(holdId, studentId, ct);
             return Results.NoContent();
         });
 
         // GET /me/holds
         app.MapGet("/me/holds", async (
             HttpContext ctx,
-            HoldService svc) =>
+            HoldService svc,
+            CancellationToken ct) =>
         {
             var studentId = StudentIdValidation.ValidateAndGet(ctx.Request);
-            var result = await svc.GetMyHoldsAsync(studentId);
+            var result = await svc.GetMyHoldsAsync(studentId, ct);
             return Results.Ok(result);
         });
     }

@@ -34,60 +34,50 @@ public class HoldService
     private NpgsqlConnection GetConnection()
         => (NpgsqlConnection)_db.Database.GetDbConnection();
 
-    public async Task<CreateHoldResponse> CreateHoldAsync(string classId, string studentId)
+    public async Task<CreateHoldResponse> CreateHoldAsync(string classId, string studentId, CancellationToken ct = default)
     {
-        // Fast path: unlocked pre-check to avoid lock contention when class is full
+        var holdId = _idGen.NewHoldId();
+        var duration = HoldDurationSeconds;
+
+        var conn = GetConnection();
+        await conn.OpenAsync(ct);
+        try
         {
-            var conn = GetConnection();
-            await conn.OpenAsync();
-            try
+            // Fast path: unlocked pre-check to avoid lock contention when class is full
+            await using (var fastCmd = new NpgsqlCommand(@"
+                SELECT
+                    c.total_seats,
+                    COALESCE(SUM(CASE WHEN h.status IN ('HELD','CONFIRMED') AND (h.status='CONFIRMED' OR h.expires_at > now()) THEN 1 ELSE 0 END), 0)::int
+                FROM classes c
+                LEFT JOIN holds h ON h.class_id = c.id
+                WHERE c.id = @classId
+                GROUP BY c.total_seats", conn))
             {
-                await using var fastCmd = new NpgsqlCommand(@"
-                    SELECT
-                        c.total_seats,
-                        COALESCE(SUM(CASE WHEN h.status IN ('HELD','CONFIRMED') AND (h.status='CONFIRMED' OR h.expires_at > now()) THEN 1 ELSE 0 END), 0)::int
-                    FROM classes c
-                    LEFT JOIN holds h ON h.class_id = c.id
-                    WHERE c.id = @classId
-                    GROUP BY c.total_seats", conn);
                 fastCmd.Parameters.AddWithValue("classId", classId);
-                await using var fastReader = await fastCmd.ExecuteReaderAsync();
-                if (await fastReader.ReadAsync())
+                await using var fastReader = await fastCmd.ExecuteReaderAsync(ct);
+                if (await fastReader.ReadAsync(ct))
                 {
                     var totalSeats = fastReader.GetInt32(0);
                     var currentCount = fastReader.GetInt32(1);
                     if (currentCount >= totalSeats)
                         throw AppException.NoSeatsAvailable();
                 }
-                // If class not found, let the locked path handle it (404)
             }
-            finally
-            {
-                await conn.CloseAsync();
-            }
-        }
 
-        var holdId = _idGen.NewHoldId();
-        var duration = HoldDurationSeconds;
-
-        var conn2 = GetConnection();
-        await conn2.OpenAsync();
-        try
-        {
-            await using var tx = await conn2.BeginTransactionAsync();
+            await using var tx = await conn.BeginTransactionAsync(ct);
             try
             {
                 // Set lock timeout
-                await using (var lockTimeoutCmd = new NpgsqlCommand($"SET LOCAL lock_timeout = '{LockTimeoutSeconds}s'", conn2, tx))
-                    await lockTimeoutCmd.ExecuteNonQueryAsync();
+                await using (var lockTimeoutCmd = new NpgsqlCommand($"SET LOCAL lock_timeout = '{LockTimeoutSeconds}s'", conn, tx))
+                    await lockTimeoutCmd.ExecuteNonQueryAsync(ct);
 
                 // Step 2: Lock the class row
                 int totalSeats;
                 await using (var lockCmd = new NpgsqlCommand(
-                    "SELECT total_seats FROM classes WHERE id = @classId FOR UPDATE", conn2, tx))
+                    "SELECT total_seats FROM classes WHERE id = @classId FOR UPDATE", conn, tx))
                 {
                     lockCmd.Parameters.AddWithValue("classId", classId);
-                    var result = await lockCmd.ExecuteScalarAsync();
+                    var result = await lockCmd.ExecuteScalarAsync(ct);
                     if (result is null)
                         throw AppException.NotFound($"Class '{classId}' not found.");
                     totalSeats = (int)result;
@@ -95,27 +85,27 @@ public class HoldService
 
                 // Step 3: get DB clock
                 DateTime now;
-                await using (var clockCmd = new NpgsqlCommand("SELECT clock_timestamp()", conn2, tx))
-                    now = (DateTime)await clockCmd.ExecuteScalarAsync()!;
+                await using (var clockCmd = new NpgsqlCommand("SELECT clock_timestamp()", conn, tx))
+                    now = (DateTime)(await clockCmd.ExecuteScalarAsync(ct))!;
 
                 // Step 4: expire old HELD holds
                 await using (var expireCmd = new NpgsqlCommand(
                     "UPDATE holds SET status='EXPIRED' WHERE class_id=@classId AND status='HELD' AND expires_at <= @now",
-                    conn2, tx))
+                    conn, tx))
                 {
                     expireCmd.Parameters.AddWithValue("classId", classId);
                     expireCmd.Parameters.AddWithValue("now", now);
-                    await expireCmd.ExecuteNonQueryAsync();
+                    await expireCmd.ExecuteNonQueryAsync(ct);
                 }
 
                 // Step 5: check duplicate
                 await using (var dupCmd = new NpgsqlCommand(
                     "SELECT 1 FROM holds WHERE class_id=@classId AND student_id=@studentId AND status IN ('HELD','CONFIRMED') LIMIT 1",
-                    conn2, tx))
+                    conn, tx))
                 {
                     dupCmd.Parameters.AddWithValue("classId", classId);
                     dupCmd.Parameters.AddWithValue("studentId", studentId);
-                    var dup = await dupCmd.ExecuteScalarAsync();
+                    var dup = await dupCmd.ExecuteScalarAsync(ct);
                     if (dup is not null)
                         throw AppException.AlreadyApplied();
                 }
@@ -124,10 +114,10 @@ public class HoldService
                 int activeCount;
                 await using (var countCmd = new NpgsqlCommand(
                     "SELECT COUNT(*)::int FROM holds WHERE class_id=@classId AND status IN ('HELD','CONFIRMED')",
-                    conn2, tx))
+                    conn, tx))
                 {
                     countCmd.Parameters.AddWithValue("classId", classId);
-                    var countResult = await countCmd.ExecuteScalarAsync();
+                    var countResult = await countCmd.ExecuteScalarAsync(ct);
                     activeCount = Convert.ToInt32(countResult);
                 }
                 if (activeCount >= totalSeats)
@@ -138,24 +128,25 @@ public class HoldService
                 await using (var insertCmd = new NpgsqlCommand(@"
                     INSERT INTO holds (id, class_id, student_id, status, expires_at, created_at)
                     VALUES (@id, @classId, @studentId, 'HELD', @expiresAt, @now)",
-                    conn2, tx))
+                    conn, tx))
                 {
                     insertCmd.Parameters.AddWithValue("id", holdId);
                     insertCmd.Parameters.AddWithValue("classId", classId);
                     insertCmd.Parameters.AddWithValue("studentId", studentId);
                     insertCmd.Parameters.AddWithValue("expiresAt", expiresAt);
                     insertCmd.Parameters.AddWithValue("now", now);
-                    await insertCmd.ExecuteNonQueryAsync();
+                    await insertCmd.ExecuteNonQueryAsync(ct);
                 }
 
-                await tx.CommitAsync();
+                // Durable commit (not cancelled by client disconnect)
+                await tx.CommitAsync(CancellationToken.None);
                 return new CreateHoldResponse(holdId, classId, studentId, HoldStatus.Held,
                     DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc),
                     DateTime.SpecifyKind(now, DateTimeKind.Utc));
             }
             catch
             {
-                await tx.RollbackAsync();
+                await tx.RollbackAsync(CancellationToken.None);
                 throw;
             }
         }
@@ -165,22 +156,22 @@ public class HoldService
         }
         finally
         {
-            await conn2.CloseAsync();
+            await conn.CloseAsync();
         }
     }
 
-    public async Task<HoldResponse> GetHoldAsync(string holdId)
+    public async Task<HoldResponse> GetHoldAsync(string holdId, CancellationToken ct = default)
     {
         var conn = GetConnection();
-        await conn.OpenAsync();
+        await conn.OpenAsync(ct);
         try
         {
             await using var cmd = new NpgsqlCommand(@"
                 SELECT id, class_id, status, expires_at, clock_timestamp() as server_time
                 FROM holds WHERE id = @holdId", conn);
             cmd.Parameters.AddWithValue("holdId", holdId);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
                 throw AppException.NotFound($"Hold '{holdId}' not found.");
 
             var id = reader.GetString(0);
@@ -201,17 +192,17 @@ public class HoldService
         }
     }
 
-    public async Task<ConfirmHoldResponse> ConfirmHoldAsync(string holdId, string studentId)
+    public async Task<ConfirmHoldResponse> ConfirmHoldAsync(string holdId, string studentId, CancellationToken ct = default)
     {
         var conn = GetConnection();
-        await conn.OpenAsync();
+        await conn.OpenAsync(ct);
         try
         {
-            await using var tx = await conn.BeginTransactionAsync();
+            await using var tx = await conn.BeginTransactionAsync(ct);
             try
             {
                 await using (var lockTimeoutCmd = new NpgsqlCommand($"SET LOCAL lock_timeout = '{LockTimeoutSeconds}s'", conn, tx))
-                    await lockTimeoutCmd.ExecuteNonQueryAsync();
+                    await lockTimeoutCmd.ExecuteNonQueryAsync(ct);
 
                 // Get hold first to find classId
                 string classId;
@@ -223,8 +214,8 @@ public class HoldService
                     conn, tx))
                 {
                     holdCmd.Parameters.AddWithValue("holdId", holdId);
-                    await using var reader = await holdCmd.ExecuteReaderAsync();
-                    if (!await reader.ReadAsync())
+                    await using var reader = await holdCmd.ExecuteReaderAsync(ct);
+                    if (!await reader.ReadAsync(ct))
                         throw AppException.NotFound($"Hold '{holdId}' not found.");
                     classId = reader.GetString(0);
                     currentStatus = reader.GetString(1);
@@ -241,21 +232,21 @@ public class HoldService
                     "SELECT 1 FROM classes WHERE id = @classId FOR UPDATE", conn, tx))
                 {
                     lockCmd.Parameters.AddWithValue("classId", classId);
-                    await lockCmd.ExecuteScalarAsync();
+                    await lockCmd.ExecuteScalarAsync(ct);
                 }
 
                 // DB clock
                 DateTime now;
                 await using (var clockCmd = new NpgsqlCommand("SELECT clock_timestamp()", conn, tx))
-                    now = (DateTime)await clockCmd.ExecuteScalarAsync()!;
+                    now = (DateTime)(await clockCmd.ExecuteScalarAsync(ct))!;
 
                 // Re-read hold inside lock
                 await using (var rereadCmd = new NpgsqlCommand(
                     "SELECT status, expires_at FROM holds WHERE id = @holdId FOR UPDATE", conn, tx))
                 {
                     rereadCmd.Parameters.AddWithValue("holdId", holdId);
-                    await using var r = await rereadCmd.ExecuteReaderAsync();
-                    await r.ReadAsync();
+                    await using var r = await rereadCmd.ExecuteReaderAsync(ct);
+                    await r.ReadAsync(ct);
                     currentStatus = r.GetString(0);
                     expiresAt = DateTime.SpecifyKind(r.GetDateTime(1), DateTimeKind.Utc);
                 }
@@ -263,7 +254,7 @@ public class HoldService
                 // Business logic checks
                 if (currentStatus == HoldStatus.Confirmed)
                 {
-                    await tx.CommitAsync();
+                    await tx.CommitAsync(CancellationToken.None);
                     return new ConfirmHoldResponse(holdId, HoldStatus.Confirmed);
                 }
                 if (currentStatus == HoldStatus.Cancelled)
@@ -279,15 +270,15 @@ public class HoldService
                 {
                     confirmCmd.Parameters.AddWithValue("now", now);
                     confirmCmd.Parameters.AddWithValue("holdId", holdId);
-                    await confirmCmd.ExecuteNonQueryAsync();
+                    await confirmCmd.ExecuteNonQueryAsync(ct);
                 }
 
-                await tx.CommitAsync();
+                await tx.CommitAsync(CancellationToken.None);
                 return new ConfirmHoldResponse(holdId, HoldStatus.Confirmed);
             }
             catch
             {
-                await tx.RollbackAsync();
+                await tx.RollbackAsync(CancellationToken.None);
                 throw;
             }
         }
@@ -301,17 +292,17 @@ public class HoldService
         }
     }
 
-    public async Task CancelHoldAsync(string holdId, string studentId)
+    public async Task CancelHoldAsync(string holdId, string studentId, CancellationToken ct = default)
     {
         var conn = GetConnection();
-        await conn.OpenAsync();
+        await conn.OpenAsync(ct);
         try
         {
-            await using var tx = await conn.BeginTransactionAsync();
+            await using var tx = await conn.BeginTransactionAsync(ct);
             try
             {
                 await using (var lockTimeoutCmd = new NpgsqlCommand($"SET LOCAL lock_timeout = '{LockTimeoutSeconds}s'", conn, tx))
-                    await lockTimeoutCmd.ExecuteNonQueryAsync();
+                    await lockTimeoutCmd.ExecuteNonQueryAsync(ct);
 
                 // Get hold
                 string classId;
@@ -321,8 +312,8 @@ public class HoldService
                     "SELECT class_id, status, student_id FROM holds WHERE id = @holdId", conn, tx))
                 {
                     holdCmd.Parameters.AddWithValue("holdId", holdId);
-                    await using var reader = await holdCmd.ExecuteReaderAsync();
-                    if (!await reader.ReadAsync())
+                    await using var reader = await holdCmd.ExecuteReaderAsync(ct);
+                    if (!await reader.ReadAsync(ct))
                         throw AppException.NotFound($"Hold '{holdId}' not found.");
                     classId = reader.GetString(0);
                     currentStatus = reader.GetString(1);
@@ -336,7 +327,7 @@ public class HoldService
                 // Already done: idempotent
                 if (currentStatus == HoldStatus.Cancelled || currentStatus == HoldStatus.Expired)
                 {
-                    await tx.CommitAsync();
+                    await tx.CommitAsync(CancellationToken.None);
                     return;
                 }
 
@@ -348,13 +339,13 @@ public class HoldService
                     "SELECT 1 FROM classes WHERE id = @classId FOR UPDATE", conn, tx))
                 {
                     lockCmd.Parameters.AddWithValue("classId", classId);
-                    await lockCmd.ExecuteScalarAsync();
+                    await lockCmd.ExecuteScalarAsync(ct);
                 }
 
                 // DB clock
                 DateTime now;
                 await using (var clockCmd = new NpgsqlCommand("SELECT clock_timestamp()", conn, tx))
-                    now = (DateTime)await clockCmd.ExecuteScalarAsync()!;
+                    now = (DateTime)(await clockCmd.ExecuteScalarAsync(ct))!;
 
                 // Cancel
                 await using (var cancelCmd = new NpgsqlCommand(@"
@@ -363,14 +354,14 @@ public class HoldService
                 {
                     cancelCmd.Parameters.AddWithValue("now", now);
                     cancelCmd.Parameters.AddWithValue("holdId", holdId);
-                    await cancelCmd.ExecuteNonQueryAsync();
+                    await cancelCmd.ExecuteNonQueryAsync(ct);
                 }
 
-                await tx.CommitAsync();
+                await tx.CommitAsync(CancellationToken.None);
             }
             catch
             {
-                await tx.RollbackAsync();
+                await tx.RollbackAsync(CancellationToken.None);
                 throw;
             }
         }
@@ -384,10 +375,10 @@ public class HoldService
         }
     }
 
-    public async Task<List<MyHoldResponse>> GetMyHoldsAsync(string studentId)
+    public async Task<List<MyHoldResponse>> GetMyHoldsAsync(string studentId, CancellationToken ct = default)
     {
         var conn = GetConnection();
-        await conn.OpenAsync();
+        await conn.OpenAsync(ct);
         try
         {
             await using var cmd = new NpgsqlCommand(@"
@@ -397,10 +388,10 @@ public class HoldService
                 WHERE h.student_id = @studentId
                 ORDER BY h.created_at DESC", conn);
             cmd.Parameters.AddWithValue("studentId", studentId);
-            await using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
 
             var results = new List<MyHoldResponse>();
-            while (await reader.ReadAsync())
+            while (await reader.ReadAsync(ct))
             {
                 var id = reader.GetString(0);
                 var classId = reader.GetString(1);

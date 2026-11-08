@@ -130,6 +130,20 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(opt =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// ---- Host & Kestrel Hardening ----
+builder.Services.Configure<HostOptions>(opts =>
+{
+    opts.ShutdownTimeout = TimeSpan.FromSeconds(25);
+});
+
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.AddServerHeader = false;
+    serverOptions.Limits.MaxRequestBodySize = 8 * 1024; // 8 KB
+    serverOptions.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(10);
+    serverOptions.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(2);
+});
+
 var app = builder.Build();
 
 // ---- Middleware ----
@@ -166,6 +180,10 @@ app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 
 app.MapGet("/health/ready", async (AppDbContext db) =>
 {
+    if (!DatabaseMigrator.IsReady)
+        return Results.Json(new { status = "unhealthy", error = "Database migrations in progress" },
+            statusCode: 503);
+
     try
     {
         await db.Database.ExecuteSqlRawAsync("SELECT 1");

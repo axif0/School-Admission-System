@@ -11,6 +11,8 @@ namespace SchoolAdmission.Api.Data;
 /// </summary>
 public static class DatabaseMigrator
 {
+    public static volatile bool IsReady = false;
+
     public static async Task MigrateAsync(IServiceProvider services, ILogger logger)
     {
         // Retry until Postgres is ready
@@ -44,6 +46,7 @@ public static class DatabaseMigrator
                     await idxCmd.ExecuteNonQueryAsync();
 
                     logger.LogInformation("Migrations complete.");
+                    IsReady = true;
                 }
                 finally
                 {

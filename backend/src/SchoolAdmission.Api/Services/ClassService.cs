@@ -18,7 +18,7 @@ public class ClassService
         _idGen = idGen;
     }
 
-    public async Task<ClassResponse> CreateAsync(CreateClassRequest req)
+    public async Task<ClassResponse> CreateAsync(CreateClassRequest req, CancellationToken ct = default)
     {
         // Validation
         var name = req.Name?.Trim() ?? "";
@@ -36,12 +36,12 @@ public class ClassService
         };
 
         _db.Classes.Add(cls);
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(ct);
 
         return new ClassResponse(cls.Id, cls.Name, cls.TotalSeats);
     }
 
-    public async Task<List<ClassDetailResponse>> GetAllAsync()
+    public async Task<List<ClassDetailResponse>> GetAllAsync(CancellationToken ct = default)
     {
         // Single grouped query for all classes with seat counts
         var sql = @"
@@ -58,12 +58,12 @@ public class ClassService
 
         var result = new List<ClassDetailResponse>();
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
-        await conn.OpenAsync();
+        await conn.OpenAsync(ct);
         try
         {
             await using var cmd = new NpgsqlCommand(sql, conn);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
             {
                 var id = reader.GetString(0);
                 var name = reader.GetString(1);
@@ -80,7 +80,7 @@ public class ClassService
         return result;
     }
 
-    public async Task<ClassDetailResponse> GetByIdAsync(string classId)
+    public async Task<ClassDetailResponse> GetByIdAsync(string classId, CancellationToken ct = default)
     {
         var sql = @"
             SELECT
@@ -95,13 +95,13 @@ public class ClassService
             GROUP BY c.id, c.name, c.total_seats";
 
         var conn = (NpgsqlConnection)_db.Database.GetDbConnection();
-        await conn.OpenAsync();
+        await conn.OpenAsync(ct);
         try
         {
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("classId", classId);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
                 throw AppException.NotFound($"Class '{classId}' not found.");
 
             var id = reader.GetString(0);
