@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
+using SchoolAdmission.Api.Configuration;
 using SchoolAdmission.Api.Contracts;
 using SchoolAdmission.Api.Data;
 using SchoolAdmission.Api.Domain;
@@ -11,17 +13,23 @@ public class HoldService
 {
     private readonly AppDbContext _db;
     private readonly IdGenerator _idGen;
-    private readonly IConfiguration _config;
+    private readonly IOptions<HoldOptions> _holdOptions;
+    private readonly IOptions<DatabaseOptions> _dbOptions;
 
-    public HoldService(AppDbContext db, IdGenerator idGen, IConfiguration config)
+    public HoldService(
+        AppDbContext db,
+        IdGenerator idGen,
+        IOptions<HoldOptions> holdOptions,
+        IOptions<DatabaseOptions> dbOptions)
     {
         _db = db;
         _idGen = idGen;
-        _config = config;
+        _holdOptions = holdOptions;
+        _dbOptions = dbOptions;
     }
 
-    private int HoldDurationSeconds =>
-        int.TryParse(_config["HOLD_DURATION_SECONDS"], out var v) ? v : 600;
+    private int HoldDurationSeconds => _holdOptions.Value.HoldDurationSeconds;
+    private int LockTimeoutSeconds => _dbOptions.Value.LockTimeoutSeconds;
 
     private NpgsqlConnection GetConnection()
         => (NpgsqlConnection)_db.Database.GetDbConnection();
@@ -70,7 +78,7 @@ public class HoldService
             try
             {
                 // Set lock timeout
-                await using (var lockTimeoutCmd = new NpgsqlCommand("SET LOCAL lock_timeout = '15s'", conn2, tx))
+                await using (var lockTimeoutCmd = new NpgsqlCommand($"SET LOCAL lock_timeout = '{LockTimeoutSeconds}s'", conn2, tx))
                     await lockTimeoutCmd.ExecuteNonQueryAsync();
 
                 // Step 2: Lock the class row
@@ -202,7 +210,7 @@ public class HoldService
             await using var tx = await conn.BeginTransactionAsync();
             try
             {
-                await using (var lockTimeoutCmd = new NpgsqlCommand("SET LOCAL lock_timeout = '15s'", conn, tx))
+                await using (var lockTimeoutCmd = new NpgsqlCommand($"SET LOCAL lock_timeout = '{LockTimeoutSeconds}s'", conn, tx))
                     await lockTimeoutCmd.ExecuteNonQueryAsync();
 
                 // Get hold first to find classId
@@ -302,7 +310,7 @@ public class HoldService
             await using var tx = await conn.BeginTransactionAsync();
             try
             {
-                await using (var lockTimeoutCmd = new NpgsqlCommand("SET LOCAL lock_timeout = '15s'", conn, tx))
+                await using (var lockTimeoutCmd = new NpgsqlCommand($"SET LOCAL lock_timeout = '{LockTimeoutSeconds}s'", conn, tx))
                     await lockTimeoutCmd.ExecuteNonQueryAsync();
 
                 // Get hold

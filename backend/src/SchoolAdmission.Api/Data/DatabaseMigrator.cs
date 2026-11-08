@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
+using SchoolAdmission.Api.Configuration;
 
 namespace SchoolAdmission.Api.Data;
 
@@ -9,8 +11,6 @@ namespace SchoolAdmission.Api.Data;
 /// </summary>
 public static class DatabaseMigrator
 {
-    private const long AdvisoryLockKey = 123456789L; // unique app lock key
-
     public static async Task MigrateAsync(IServiceProvider services, ILogger logger)
     {
         // Retry until Postgres is ready
@@ -20,13 +20,15 @@ public static class DatabaseMigrator
             {
                 using var scope = services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var dbOptions = scope.ServiceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
+                var advisoryKey = dbOptions.MigrationAdvisoryLockKey;
 
                 var conn = (NpgsqlConnection)db.Database.GetDbConnection();
                 await conn.OpenAsync();
 
                 // Acquire advisory lock (blocking)
                 await using (var lockCmd = new NpgsqlCommand(
-                    $"SELECT pg_advisory_lock({AdvisoryLockKey})", conn))
+                    $"SELECT pg_advisory_lock({advisoryKey})", conn))
                     await lockCmd.ExecuteNonQueryAsync();
 
                 try
@@ -46,7 +48,7 @@ public static class DatabaseMigrator
                 finally
                 {
                     await using (var unlockCmd = new NpgsqlCommand(
-                        $"SELECT pg_advisory_unlock({AdvisoryLockKey})", conn))
+                        $"SELECT pg_advisory_unlock({advisoryKey})", conn))
                         await unlockCmd.ExecuteNonQueryAsync();
                     await conn.CloseAsync();
                 }

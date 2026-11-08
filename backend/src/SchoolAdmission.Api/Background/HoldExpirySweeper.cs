@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
+using SchoolAdmission.Api.Configuration;
 using SchoolAdmission.Api.Data;
 
 namespace SchoolAdmission.Api.Background;
@@ -11,21 +13,35 @@ namespace SchoolAdmission.Api.Background;
 public class HoldExpirySweeper : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IOptions<SweeperOptions> _options;
     private readonly ILogger<HoldExpirySweeper> _logger;
 
-    public HoldExpirySweeper(IServiceScopeFactory scopeFactory, ILogger<HoldExpirySweeper> logger)
+    public HoldExpirySweeper(
+        IServiceScopeFactory scopeFactory,
+        IOptions<SweeperOptions> options,
+        ILogger<HoldExpirySweeper> logger)
     {
         _scopeFactory = scopeFactory;
+        _options = options;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!_options.Value.Enabled)
+        {
+            _logger.LogInformation("HoldExpirySweeper is disabled by configuration.");
+            return;
+        }
+
+        var interval = TimeSpan.FromSeconds(_options.Value.IntervalSeconds);
+        _logger.LogInformation("HoldExpirySweeper started with interval {Interval}s.", _options.Value.IntervalSeconds);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                await Task.Delay(interval, stoppingToken);
                 await SweepAsync(stoppingToken);
             }
             catch (OperationCanceledException) { break; }
