@@ -11,7 +11,7 @@ public static class HoldEndpoints
         app.MapPost("/classes/{classId}/holds", async (
             string classId,
             HttpContext ctx,
-            HoldService svc,
+            IHoldService svc,
             CancellationToken ct) =>
         {
             var studentId = StudentIdValidation.ValidateAndGet(ctx.Request);
@@ -22,7 +22,7 @@ public static class HoldEndpoints
         // GET /holds/{holdId}
         app.MapGet("/holds/{holdId}", async (
             string holdId,
-            HoldService svc,
+            IHoldService svc,
             CancellationToken ct) =>
         {
             var result = await svc.GetHoldAsync(holdId, ct);
@@ -33,7 +33,7 @@ public static class HoldEndpoints
         app.MapPost("/holds/{holdId}/confirm", async (
             string holdId,
             HttpContext ctx,
-            HoldService svc,
+            IHoldService svc,
             CancellationToken ct) =>
         {
             var studentId = StudentIdValidation.ValidateAndGet(ctx.Request);
@@ -45,7 +45,7 @@ public static class HoldEndpoints
         app.MapDelete("/holds/{holdId}", async (
             string holdId,
             HttpContext ctx,
-            HoldService svc,
+            IHoldService svc,
             CancellationToken ct) =>
         {
             var studentId = StudentIdValidation.ValidateAndGet(ctx.Request);
@@ -56,7 +56,7 @@ public static class HoldEndpoints
         // GET /me/holds
         app.MapGet("/me/holds", async (
             HttpContext ctx,
-            HoldService svc,
+            IHoldService svc,
             CancellationToken ct) =>
         {
             var studentId = StudentIdValidation.ValidateAndGet(ctx.Request);

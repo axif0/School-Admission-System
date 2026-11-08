@@ -4,6 +4,7 @@ using Npgsql;
 using SchoolAdmission.Api.Background;
 using SchoolAdmission.Api.Configuration;
 using SchoolAdmission.Api.Data;
+using SchoolAdmission.Api.Data.Abstractions;
 using SchoolAdmission.Api.Endpoints;
 using SchoolAdmission.Api.Middleware;
 using SchoolAdmission.Api.Services;
@@ -95,6 +96,10 @@ if (!connStr.Contains("Maximum Pool Size"))
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(connBuilder.ConnectionString));
 
+builder.Services.AddScoped<IClassStore, PostgresClassStore>();
+builder.Services.AddScoped<IHoldStore, PostgresHoldStore>();
+builder.Services.AddScoped<IClassService, ClassService>();
+builder.Services.AddScoped<IHoldService, HoldService>();
 builder.Services.AddScoped<ClassService>();
 builder.Services.AddScoped<HoldService>();
 builder.Services.AddSingleton<IdGenerator>();

@@ -12,7 +12,7 @@ public static class ClassEndpoints
         app.MapPost("/classes", async (
             HttpContext ctx,
             [FromBody] CreateClassRequest? req,
-            ClassService svc,
+            IClassService svc,
             CancellationToken ct) =>
         {
             if (req is null)
@@ -21,13 +21,13 @@ public static class ClassEndpoints
             return Results.Created($"/classes/{result.Id}", result);
         });
 
-        app.MapGet("/classes", async (ClassService svc, CancellationToken ct) =>
+        app.MapGet("/classes", async (IClassService svc, CancellationToken ct) =>
         {
             var classes = await svc.GetAllAsync(ct);
             return Results.Ok(classes);
         });
 
-        app.MapGet("/classes/{classId}", async (string classId, ClassService svc, CancellationToken ct) =>
+        app.MapGet("/classes/{classId}", async (string classId, IClassService svc, CancellationToken ct) =>
         {
             var cls = await svc.GetByIdAsync(classId, ct);
             return Results.Ok(cls);
