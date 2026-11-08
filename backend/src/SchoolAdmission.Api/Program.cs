@@ -75,6 +75,22 @@ var logger = app.Services.GetRequiredService<ILogger<Program>>();
 await DatabaseMigrator.MigrateAsync(app.Services, logger);
 
 // ---- Endpoints ----
+app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
+
+app.MapGet("/health/ready", async (AppDbContext db) =>
+{
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("SELECT 1");
+        return Results.Ok(new { status = "ready" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { status = "unhealthy", error = ex.Message },
+            statusCode: 503);
+    }
+});
+
 app.MapGet("/health", async (AppDbContext db) =>
 {
     try
