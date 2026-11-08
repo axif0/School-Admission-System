@@ -119,7 +119,8 @@ public class HoldService
                     conn2, tx))
                 {
                     countCmd.Parameters.AddWithValue("classId", classId);
-                    activeCount = (int)(long)await countCmd.ExecuteScalarAsync()!;
+                    var countResult = await countCmd.ExecuteScalarAsync();
+                    activeCount = Convert.ToInt32(countResult);
                 }
                 if (activeCount >= totalSeats)
                     throw AppException.NoSeatsAvailable();
