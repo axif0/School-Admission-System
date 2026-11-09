@@ -35,7 +35,7 @@ public class ClassService : IClassService
 
         var id = _idGen.NewClassId();
         var res = await _store.CreateClassAsync(id, name, req.TotalSeats, DateTime.UtcNow, ct);
-        _coalescer.OnWriteOccurred();
+        _coalescer.OnWriteOccurred(id);
         return res;
     }
 
@@ -48,10 +48,22 @@ public class ClassService : IClassService
         return result;
     }
 
+    public async Task<byte[]> GetAllUtf8JsonAsync(CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        var (_, bytes) = await _coalescer.ExecuteCoalescedWithBytesAsync(cancellationToken => _store.GetAllClassesAsync(cancellationToken), ct);
+        sw.Stop();
+        _metrics?.ClassReadLatencySeconds.Record(sw.Elapsed.TotalSeconds);
+        return bytes;
+    }
+
     public async Task<ClassDetailResponse> GetByIdAsync(string classId, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
-        var cls = await _store.GetClassByIdAsync(classId, ct);
+        var cls = await _coalescer.ExecuteCoalescedByIdAsync(
+            classId,
+            cancellationToken => _store.GetClassByIdAsync(classId, cancellationToken),
+            ct);
         sw.Stop();
         _metrics?.ClassReadLatencySeconds.Record(sw.Elapsed.TotalSeconds);
         if (cls is null)

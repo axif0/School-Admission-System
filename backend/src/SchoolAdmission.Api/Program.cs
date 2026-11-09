@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -46,6 +47,8 @@ builder.Services.AddOptions<HoldOptions>()
         config.GetSection(HoldOptions.SectionName).Bind(opt);
         if (int.TryParse(config["HOLD_DURATION_SECONDS"], out var sec))
             opt.HoldDurationSeconds = sec;
+        if (int.TryParse(config["MAX_CONCURRENT_WRITES_PER_CLASS"], out var maxWrites))
+            opt.MaxConcurrentWritesPerClass = maxWrites;
     })
     .ValidateDataAnnotations()
     .ValidateOnStart();
@@ -94,6 +97,8 @@ builder.Services.AddOptions<AdminOptions>()
         config.GetSection(AdminOptions.SectionName).Bind(opt);
         if (config["ADMIN_API_KEY"] is { } key && !string.IsNullOrWhiteSpace(key))
             opt.ApiKey = key;
+        if (config["STUDENT_AUTH_SECRET"] is { } studentSecret && !string.IsNullOrWhiteSpace(studentSecret))
+            opt.StudentAuthSecret = studentSecret;
     });
 
 builder.Services.AddOptions<RateLimitOptions>()
@@ -124,11 +129,9 @@ builder.Services.AddOptions<ObservabilityOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
-// ---- Configuration ----
 var connStr = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("ConnectionStrings__Default is required.");
 
-// Add connection pool size
 var connBuilder = new NpgsqlConnectionStringBuilder(connStr);
 if (!connStr.Contains("Maximum Pool Size"))
 {
@@ -181,17 +184,22 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(connBuilder.ConnectionString));
 
 builder.Services.AddSingleton<ClassQueryCoalescer>();
+builder.Services.AddSingleton<ClassWriteGate>();
 builder.Services.AddSingleton<AppMetrics>();
 builder.Services.AddScoped<IClassStore, PostgresClassStore>();
 builder.Services.AddScoped<IHoldStore, PostgresHoldStore>();
 builder.Services.AddScoped<IClassService, ClassService>();
 builder.Services.AddScoped<IHoldService, HoldService>();
-builder.Services.AddScoped<ClassService>();
-builder.Services.AddScoped<HoldService>();
 builder.Services.AddSingleton<IdGenerator>();
 builder.Services.AddHostedService<HoldExpirySweeper>();
 
-// CORS
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var corsOrigins = builder.Configuration["CORS_ALLOWED_ORIGINS"] ?? "http://localhost:3000";
 builder.Services.AddCors(opt =>
 {
@@ -204,20 +212,12 @@ builder.Services.AddCors(opt =>
     });
 });
 
-// JSON: camelCase + no enum conversion needed (we use string constants)
 builder.Services.ConfigureHttpJsonOptions(opt =>
 {
     opt.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     opt.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
 });
 
-// Allow empty body / missing Content-Type on POST
-builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(opt =>
-{
-    opt.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-});
-
-// Swagger (dev only)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -238,6 +238,7 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 var app = builder.Build();
 
 // ---- Middleware ----
+app.UseForwardedHeaders();
 app.UseMiddleware<CorrelationMiddleware>();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseCors();
@@ -273,12 +274,18 @@ await DatabaseMigrator.MigrateAsync(app.Services, logger);
 // ---- Endpoints ----
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 
-app.MapGet("/metrics", (IOptions<ObservabilityOptions> obsOptions, AppMetrics metrics) =>
+app.MapGet("/metrics", (HttpContext ctx, IOptions<ObservabilityOptions> obsOptions, AppMetrics metrics) =>
 {
     if (!obsOptions.Value.MetricsEnabled)
         return Results.NotFound();
 
-    return Results.Content(metrics.ToPrometheusFormat(), "text/plain; version=0.0.4");
+    var accept = ctx.Request.Headers.Accept.ToString();
+    var useOpenMetrics = accept.Contains("application/openmetrics-text", StringComparison.OrdinalIgnoreCase);
+    var contentType = useOpenMetrics
+        ? "application/openmetrics-text; version=1.0.0; charset=utf-8"
+        : "text/plain; version=0.0.4; charset=utf-8";
+
+    return Results.Content(metrics.ToPrometheusFormat(useOpenMetrics), contentType);
 });
 
 app.MapGet("/health/ready", async (AppDbContext db) =>
@@ -294,7 +301,8 @@ app.MapGet("/health/ready", async (AppDbContext db) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { status = "unhealthy", error = ex.Message },
+        logger.LogWarning(ex, "Readiness check failed");
+        return Results.Json(new { status = "unhealthy", error = "Database check failed" },
             statusCode: 503);
     }
 });
@@ -308,7 +316,8 @@ app.MapGet("/health", async (AppDbContext db) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { status = "unhealthy", error = ex.Message },
+        logger.LogWarning(ex, "Health check failed");
+        return Results.Json(new { status = "unhealthy", error = "Database check failed" },
             statusCode: 503);
     }
 });

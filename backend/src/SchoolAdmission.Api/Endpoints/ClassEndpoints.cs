@@ -45,8 +45,50 @@ public static class ClassEndpoints
 
         app.MapGet("/classes", async (IClassService svc, CancellationToken ct) =>
         {
-            var classes = await svc.GetAllAsync(ct);
-            return Results.Ok(classes);
+            var jsonBytes = await svc.GetAllUtf8JsonAsync(ct);
+            return Results.Bytes(jsonBytes, "application/json; charset=utf-8");
+        });
+
+        app.MapGet("/classes/stream", async (
+            HttpContext ctx,
+            ClassQueryCoalescer coalescer,
+            CancellationToken ct) =>
+        {
+            ctx.Response.Headers.ContentType = "text/event-stream";
+            ctx.Response.Headers.CacheControl = "no-cache";
+            ctx.Response.Headers["X-Accel-Buffering"] = "no";
+
+            var (subId, reader) = coalescer.SubscribeUpdates();
+            try
+            {
+                await ctx.Response.WriteAsync(": connected\n\n", ct);
+                await ctx.Response.Body.FlushAsync(ct);
+
+                while (!ct.IsCancellationRequested)
+                {
+                    using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    timeoutCts.CancelAfter(TimeSpan.FromSeconds(15));
+                    try
+                    {
+                        var targetClassId = await reader.ReadAsync(timeoutCts.Token);
+                        await ctx.Response.WriteAsync($"event: classes-updated\ndata: {{\"classId\":\"{targetClassId}\"}}\n\n", ct);
+                        await ctx.Response.Body.FlushAsync(ct);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        await ctx.Response.WriteAsync(": heartbeat\n\n", ct);
+                        await ctx.Response.Body.FlushAsync(ct);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal client disconnect
+            }
+            finally
+            {
+                coalescer.UnsubscribeUpdates(subId);
+            }
         });
 
         app.MapGet("/classes/{classId}", async (string classId, IClassService svc, CancellationToken ct) =>

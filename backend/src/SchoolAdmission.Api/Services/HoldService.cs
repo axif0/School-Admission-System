@@ -18,6 +18,7 @@ public class HoldService : IHoldService
     private readonly IOptions<DatabaseOptions> _dbOptions;
     private readonly ClassQueryCoalescer _coalescer;
     private readonly AppMetrics? _metrics;
+    private readonly ClassWriteGate _writeGate;
 
     public HoldService(
         IHoldStore store,
@@ -25,7 +26,8 @@ public class HoldService : IHoldService
         IOptions<HoldOptions> holdOptions,
         IOptions<DatabaseOptions> dbOptions,
         ClassQueryCoalescer coalescer,
-        AppMetrics? metrics = null)
+        AppMetrics? metrics = null,
+        ClassWriteGate? writeGate = null)
     {
         _store = store;
         _idGen = idGen;
@@ -33,6 +35,7 @@ public class HoldService : IHoldService
         _dbOptions = dbOptions;
         _coalescer = coalescer;
         _metrics = metrics;
+        _writeGate = writeGate ?? new ClassWriteGate(holdOptions);
     }
 
     private int HoldDurationSeconds => _holdOptions.Value.HoldDurationSeconds;
@@ -40,11 +43,16 @@ public class HoldService : IHoldService
 
     public async Task<CreateHoldResponse> CreateHoldAsync(string classId, string studentId, CancellationToken ct = default)
     {
+        // Per-class virtual waiting room: bounds concurrent DB lock waiters per class to protect connection pool
+        using var gateLease = await _writeGate.EnterAsync(classId, TimeSpan.FromSeconds(LockTimeoutSeconds), ct);
+
         await using var session = await _store.OpenSessionAsync(classId, ct);
 
-        // 1. Fast path: unlocked pre-check to reject full classes without lock contention
+        // 1. Fast path: unlocked pre-check to reject full or non-existent classes without lock contention
         var fastCheck = await session.CheckCapacityAsync(ct);
-        if (fastCheck.Found && fastCheck.ActiveCount >= fastCheck.TotalSeats)
+        if (!fastCheck.Found)
+            throw AppException.NotFound($"Class '{classId}' not found.");
+        if (fastCheck.ActiveCount >= fastCheck.TotalSeats)
         {
             _metrics?.HoldsRejected.Add(1, new KeyValuePair<string, object?>("reason", "SEATS_FULL"));
             throw AppException.NoSeatsAvailable();
@@ -91,7 +99,7 @@ public class HoldService : IHoldService
 
                 // 8. Commit with CancellationToken.None to preserve durability against client aborts
                 await tx.CommitAsync(CancellationToken.None);
-                _coalescer.OnWriteOccurred();
+                _coalescer.OnWriteOccurred(classId);
                 _metrics?.HoldsCreated.Add(1);
 
                 return new CreateHoldResponse(
@@ -126,8 +134,9 @@ public class HoldService : IHoldService
 
     public async Task<ConfirmHoldResponse> ConfirmHoldAsync(string holdId, string studentId, CancellationToken ct = default)
     {
-        // 1. Ownership & existence pre-check
-        var hold = await _store.GetHoldForOwnershipCheckAsync(holdId, ct);
+        await using var session = await _store.OpenSessionAsync(ct: ct);
+
+        var hold = await session.GetHoldForOwnershipCheckAsync(holdId, ct);
         if (hold is null)
             throw AppException.NotFound($"Hold '{holdId}' not found.");
 
@@ -136,23 +145,20 @@ public class HoldService : IHoldService
 
         try
         {
-            await using var tx = await _store.BeginHoldTransactionAsync(LockTimeoutSeconds, ct);
+            await using var tx = await session.BeginLockedAsync(LockTimeoutSeconds, ct);
             try
             {
-                // Lock class row to synchronize seat transitions
                 await tx.LockClassAsync(hold.ClassId, ct);
 
                 var now = await tx.GetDbClockAsync(ct);
                 var lockState = await tx.LockHoldRowAsync(holdId, ct);
 
-                // Domain State Machine validation
                 if (!HoldStateMachine.ValidateConfirmation(lockState.Status, lockState.ExpiresAt, now, out var error))
                 {
                     if (error is not null)
                         throw error;
                 }
 
-                // If already confirmed, idempotent return
                 if (lockState.Status == HoldStatus.Confirmed)
                 {
                     await tx.CommitAsync(CancellationToken.None);
@@ -173,7 +179,7 @@ public class HoldService : IHoldService
                 }
 
                 await tx.CommitAsync(CancellationToken.None);
-                _coalescer.OnWriteOccurred();
+                _coalescer.OnWriteOccurred(hold.ClassId);
                 _metrics?.ConfirmsTotal.Add(1, new KeyValuePair<string, object?>("result", "CONFIRMED"));
                 if (hold.CreatedAt != default)
                 {
@@ -196,15 +202,15 @@ public class HoldService : IHoldService
 
     public async Task CancelHoldAsync(string holdId, string studentId, CancellationToken ct = default)
     {
-        // 1. Ownership & existence pre-check
-        var hold = await _store.GetHoldForOwnershipCheckAsync(holdId, ct);
+        await using var session = await _store.OpenSessionAsync(ct: ct);
+
+        var hold = await session.GetHoldForOwnershipCheckAsync(holdId, ct);
         if (hold is null)
             throw AppException.NotFound($"Hold '{holdId}' not found.");
 
         if (hold.StudentId != studentId)
             throw AppException.NotYourHold();
 
-        // Fast-path state check
         if (!HoldStateMachine.ValidateCancellation(hold.Status, out var isAlreadyDone, out var err))
         {
             if (err is not null)
@@ -215,10 +221,9 @@ public class HoldService : IHoldService
 
         try
         {
-            await using var tx = await _store.BeginHoldTransactionAsync(LockTimeoutSeconds, ct);
+            await using var tx = await session.BeginLockedAsync(LockTimeoutSeconds, ct);
             try
             {
-                // Lock class row
                 await tx.LockClassAsync(hold.ClassId, ct);
 
                 var now = await tx.GetDbClockAsync(ct);
@@ -237,7 +242,7 @@ public class HoldService : IHoldService
 
                 await tx.CancelHoldAsync(holdId, now, ct);
                 await tx.CommitAsync(CancellationToken.None);
-                _coalescer.OnWriteOccurred();
+                _coalescer.OnWriteOccurred(hold.ClassId);
                 _metrics?.CancelsTotal.Add(1);
             }
             catch

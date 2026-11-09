@@ -18,11 +18,11 @@ public class PostgresHoldStore : IHoldStore
 
     private NpgsqlConnection GetConnection() => (NpgsqlConnection)_db.Database.GetDbConnection();
 
-    public async Task<IHoldSession> OpenSessionAsync(string classId, CancellationToken ct = default)
+    public async Task<IHoldSession> OpenSessionAsync(string? classId = null, CancellationToken ct = default)
     {
         var conn = GetConnection();
         await conn.OpenAsync(ct);
-        return new PostgresHoldSession(conn, classId);
+        return new PostgresHoldSession(conn, classId ?? string.Empty);
     }
 
     public async Task<FastPathSeatCheckResult> CheckFastPathSeatsAsync(string classId, CancellationToken ct = default)
@@ -288,6 +288,22 @@ public class PostgresHoldSession : IHoldSession
             return new FastPathSeatCheckResult(true, total, active);
         }
         return new FastPathSeatCheckResult(false, 0, 0);
+    }
+
+    public async Task<HoldOwnershipRecord?> GetHoldForOwnershipCheckAsync(string holdId, CancellationToken ct = default)
+    {
+        await using var cmd = new NpgsqlCommand(HoldQueries.SelectHoldForOwnershipCheck, _conn);
+        cmd.Parameters.AddWithValue("holdId", holdId);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+
+        return new HoldOwnershipRecord(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            DateTime.SpecifyKind(reader.GetDateTime(3), DateTimeKind.Utc),
+            DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc));
     }
 
     public async Task<IHoldTransaction> BeginLockedAsync(int lockTimeoutSeconds, CancellationToken ct = default)

@@ -86,7 +86,7 @@ public class AppMetrics : IDisposable
         return sb.ToString();
     }
 
-    public string ToPrometheusFormat()
+    public string ToPrometheusFormat(bool openMetrics = false)
     {
         var sb = new StringBuilder();
         sb.AppendLine("# HELP holds_created_total Total holds successfully created");
@@ -125,6 +125,11 @@ public class AppMetrics : IDisposable
         if (_histograms.TryGetValue("class_read_latency_seconds", out var classHist))
         {
             classHist.FormatPrometheus("class_read_latency_seconds", "Latency of class queries", sb);
+        }
+
+        if (openMetrics)
+        {
+            sb.AppendLine("# EOF");
         }
 
         return sb.ToString();

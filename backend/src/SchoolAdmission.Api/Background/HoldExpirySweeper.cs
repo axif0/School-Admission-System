@@ -4,6 +4,7 @@ using Npgsql;
 using SchoolAdmission.Api.Configuration;
 using SchoolAdmission.Api.Data;
 using SchoolAdmission.Api.Observability;
+using SchoolAdmission.Api.Services;
 
 namespace SchoolAdmission.Api.Background;
 
@@ -17,17 +18,20 @@ public class HoldExpirySweeper : BackgroundService
     private readonly IOptions<SweeperOptions> _options;
     private readonly ILogger<HoldExpirySweeper> _logger;
     private readonly AppMetrics? _metrics;
+    private readonly ClassQueryCoalescer? _coalescer;
 
     public HoldExpirySweeper(
         IServiceScopeFactory scopeFactory,
         IOptions<SweeperOptions> options,
         ILogger<HoldExpirySweeper> logger,
-        AppMetrics? metrics = null)
+        AppMetrics? metrics = null,
+        ClassQueryCoalescer? coalescer = null)
     {
         _scopeFactory = scopeFactory;
         _options = options;
         _logger = logger;
         _metrics = metrics;
+        _coalescer = coalescer;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -105,6 +109,7 @@ public class HoldExpirySweeper : BackgroundService
                 {
                     _logger.LogInformation("Sweeper expired {Count} holds in batch.", rows);
                     _metrics?.ExpiredSweptTotal.Add(rows);
+                    _coalescer?.OnWriteOccurred();
                 }
 
                 if (rows < batchSize)

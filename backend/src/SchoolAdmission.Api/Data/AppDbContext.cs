@@ -12,7 +12,6 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Class table
         modelBuilder.Entity<Class>(e =>
         {
             e.ToTable("classes");
@@ -23,7 +22,6 @@ public class AppDbContext : DbContext
             e.Property(c => c.CreatedAt).HasColumnName("created_at");
         });
 
-        // Hold table
         modelBuilder.Entity<Hold>(e =>
         {
             e.ToTable("holds");

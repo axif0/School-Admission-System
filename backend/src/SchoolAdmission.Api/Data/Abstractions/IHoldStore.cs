@@ -13,6 +13,7 @@ public record HoldLockState(string Status, DateTime ExpiresAt);
 public interface IHoldSession : IAsyncDisposable
 {
     Task<FastPathSeatCheckResult> CheckCapacityAsync(CancellationToken ct = default);
+    Task<HoldOwnershipRecord?> GetHoldForOwnershipCheckAsync(string holdId, CancellationToken ct = default);
     Task<IHoldTransaction> BeginLockedAsync(int lockTimeoutSeconds, CancellationToken ct = default);
 }
 
@@ -34,7 +35,7 @@ public interface IHoldTransaction : IAsyncDisposable
 
 public interface IHoldStore
 {
-    Task<IHoldSession> OpenSessionAsync(string classId, CancellationToken ct = default);
+    Task<IHoldSession> OpenSessionAsync(string? classId = null, CancellationToken ct = default);
     Task<FastPathSeatCheckResult> CheckFastPathSeatsAsync(string classId, CancellationToken ct = default);
     Task<HoldRecord?> GetHoldByIdAsync(string holdId, CancellationToken ct = default);
     Task<HoldOwnershipRecord?> GetHoldForOwnershipCheckAsync(string holdId, CancellationToken ct = default);

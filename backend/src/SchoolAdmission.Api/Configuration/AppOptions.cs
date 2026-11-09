@@ -8,6 +8,9 @@ public class HoldOptions
 
     [Range(1, 86400, ErrorMessage = "HOLD_DURATION_SECONDS must be between 1 and 86400 seconds.")]
     public int HoldDurationSeconds { get; set; } = 600;
+
+    [Range(1, 1000, ErrorMessage = "MAX_CONCURRENT_WRITES_PER_CLASS must be between 1 and 1000.")]
+    public int MaxConcurrentWritesPerClass { get; set; } = 32;
 }
 
 public class DatabaseOptions
@@ -70,6 +73,8 @@ public class AdminOptions
     public const string SectionName = "Admin";
 
     public string? ApiKey { get; set; } = null;
+
+    public string? StudentAuthSecret { get; set; } = null;
 }
 
 public class ObservabilityOptions

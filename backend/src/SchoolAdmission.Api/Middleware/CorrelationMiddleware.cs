@@ -16,7 +16,7 @@ public class CorrelationMiddleware
     public async Task InvokeAsync(HttpContext context)
     {
         var requestId = context.Request.Headers["X-Request-Id"].FirstOrDefault()?.Trim();
-        if (string.IsNullOrEmpty(requestId))
+        if (string.IsNullOrEmpty(requestId) || requestId.Length > 64 || !IsValidRequestId(requestId))
         {
             requestId = Guid.NewGuid().ToString("N");
         }
@@ -45,5 +45,15 @@ public class CorrelationMiddleware
                     sw.Elapsed.TotalMilliseconds);
             }
         }
+    }
+
+    private static bool IsValidRequestId(string id)
+    {
+        foreach (var c in id)
+        {
+            if (!char.IsLetterOrDigit(c) && c is not ('-' or '_' or '.'))
+                return false;
+        }
+        return true;
     }
 }
