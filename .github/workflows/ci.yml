@@ -46,6 +46,7 @@ jobs:
         run: dotnet test backend/SchoolAdmission.sln --no-build --configuration Release --verbosity normal --collect:"XPlat Code Coverage"
         env:
           ConnectionStrings__Default: "Host=localhost;Port=5432;Database=school_admission_test;Username=postgres;Password=postgrespassword"
+          TEST_ADMIN_CONNECTION_STRING: "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgrespassword"
 
       - name: Check for vulnerable NuGet packages
         run: dotnet list backend/src/SchoolAdmission.Api/SchoolAdmission.Api.csproj package --vulnerable --include-transitive

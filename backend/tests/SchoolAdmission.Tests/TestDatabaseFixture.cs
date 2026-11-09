@@ -22,6 +22,7 @@ public class TestDatabaseFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         AdminConnectionString = Environment.GetEnvironmentVariable("TEST_ADMIN_CONNECTION_STRING")
+            ?? Environment.GetEnvironmentVariable("ConnectionStrings__Default")
             ?? "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres";
 
         try
