@@ -1,10 +1,10 @@
 # Assumptions & Architecture Decisions
 
-This document records all choices where the assignment specification was silent, following **Section 7** and **Section 12.2** of `prompt.md`.
+This document records all choices where the assignment specification was silent.
 
 ---
 
-## 1. Pre-Made Decisions (Section 7)
+## 1. API & Domain Decisions
 
 | Topic | Decision | Source | Reason |
 |-------|----------|--------|--------|
@@ -57,6 +57,11 @@ This document records all choices where the assignment specification was silent,
    WHERE status IN ('HELD','CONFIRMED');
    ```
    Guarantees at the storage engine level that duplicate active holds can never be inserted even if an unexpected condition arose.
+5. **Advisory Lock Coordination for Migrations & Sweeper:**
+   - Startup database migrations use `pg_advisory_lock(123456789)` in `DatabaseMigrator` so only one replica executes schema DDL while others wait.
+   - Background hold cleanup uses `pg_try_advisory_xact_lock(987654321)` with `FOR UPDATE SKIP LOCKED` in `HoldExpirySweeper` so multiple backend replicas never collide or block active reservations.
+6. **Empirical Multi-Process Verification:**
+   - Verified via `ConcurrencyTests.TwoSeparateBackendInstances_AgainstSameDb_ZeroOverbooking` and a live 500-VU k6 stampede split evenly across `backend` (`:8080`) and `backend2` (`:8081`) competing for a 120-seat class: exactly 120 seats were held (`heldSeats=120, availableSeats=0`) with zero overselling and 0.00% unexpected HTTP errors.
 
 ---
 

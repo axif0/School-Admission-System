@@ -1,7 +1,7 @@
 # ADR 0003: Polling with In-Flight Coalescing Over Server-Sent Events (SSE)
 
 ## Status
-Accepted
+Superseded by [ADR 0008](0008-sse-and-per-class-concurrency-gate.md) (SSE push streaming added alongside adaptive polling and in-flight coalescing)
 
 ## Context
 The specification requires that seat counts update every few seconds on the UI without manual page reloads (Section 1.5). Auditors recommended evaluating WebSockets or Server-Sent Events (SSE) instead of periodic HTTP polling.

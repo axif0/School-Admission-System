@@ -24,7 +24,7 @@ Direct destructive changes (`ALTER TABLE DROP COLUMN`, changing column types, re
 1. **Phase 1: Expand (Additive):**
    - Add new columns, indexes, or nullable fields (`ALTER TABLE ... ADD COLUMN ...`).
    - If an index is added in production, use `CREATE INDEX CONCURRENTLY` to avoid locking writes.
-   - Run migrations on startup; `DatabaseMigrator` automatically acquires a transactional advisory lock (`pg_advisory_xact_lock(123456789)`), ensuring only one backend replica runs migrations while others wait.
+   - Run migrations on startup; `DatabaseMigrator` automatically acquires a session advisory lock (`pg_advisory_lock(123456789)`), ensuring only one backend replica runs migrations while others wait.
 2. **Phase 2: Dual-Writing / Backward-Compatible Code:**
    - Deploy new backend version that reads from old/new columns and writes to both.
 3. **Phase 3: Contract (Cleanup):**
