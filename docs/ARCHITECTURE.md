@@ -29,7 +29,32 @@ flowchart TD
     Backend2 -->|Pooled Npgsql Conns| DB
 ```
 
-### 1.2 Request Lifecycles
+### 1.2 Database Schema & Relational Integrity
+
+The relational schema comprises two primary tables connected by an enforced foreign key:
+
+```mermaid
+erDiagram
+    CLASSES ||--o{ HOLDS : "foreign key fk_holds_classes_class_id"
+    CLASSES {
+        text id PK
+        text name
+        int total_seats
+        timestamptz created_at
+    }
+    HOLDS {
+        text id PK
+        text class_id FK
+        varchar_64 student_id
+        text status
+        timestamptz expires_at
+        timestamptz created_at
+        timestamptz confirmed_at
+        timestamptz cancelled_at
+    }
+```
+
+### 1.3 Request Lifecycles
 
 #### A. Read Fast Path (`GET /classes`)
 1. Client issues `GET /classes`.

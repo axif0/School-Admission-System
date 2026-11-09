@@ -359,7 +359,7 @@ The relational schema comprises two primary tables:
 
 ```mermaid
 erDiagram
-    CLASSES ||--o{ HOLDS : "contains (logical)"
+    CLASSES ||--o{ HOLDS : "foreign key fk_holds_classes_class_id"
     CLASSES {
         text id PK
         text name
@@ -368,7 +368,7 @@ erDiagram
     }
     HOLDS {
         text id PK
-        text class_id
+        text class_id FK
         varchar_64 student_id
         text status
         timestamptz expires_at

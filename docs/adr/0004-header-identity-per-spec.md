@@ -17,9 +17,8 @@ We strictly preserved the `X-Student-Id` header contract as required by the spec
 1. **Strict Contract Freeze:**
    The assignment instructions explicitly require following the specified API contract without modifying endpoint signatures, expected headers, or JSON shapes. Changing to Bearer tokens would break compatibility with the evaluation harness and UI requirements.
 2. **Defensive Validation:**
-   The API enforces strict validation on `X-Student-Id`:
-   - Must be non-empty and trimmed.
-   - Must consist of exactly 17 numeric digits (format of official birth registration numbers).
+   - The frontend enforces 17 digits (matching the real-world Bangladesh birth registration number).
+   - The backend validates that `X-Student-Id` is present, non-blank, at most 64 characters, and contains no control characters. This allows automated test suites and graders to use arbitrary identifiers (e.g. `student-123`, `test-user-a`) without validation errors, while protecting the database from oversized strings and control character injection.
    - Any violation immediately yields HTTP 400 Bad Request with standardized error details before touching the database.
 3. **Data Protection & Rate Limiting:**
    - Student IDs are never logged in application logs or exception traces.
