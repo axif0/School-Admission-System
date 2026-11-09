@@ -59,6 +59,13 @@ public class RateLimitOptions
     public int RequestsPerMinutePerIp { get; set; } = 60;
 }
 
+public class AdminOptions
+{
+    public const string SectionName = "Admin";
+
+    public string? ApiKey { get; set; } = null;
+}
+
 public class ObservabilityOptions
 {
     public const string SectionName = "Observability";

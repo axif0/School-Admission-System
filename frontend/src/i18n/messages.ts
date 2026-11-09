@@ -50,6 +50,8 @@ export interface Translation {
 
   // Errors
   errors: {
+    ADMIN_KEY_REQUIRED: string;
+    ADMIN_KEY_INVALID: string;
     INVALID_STUDENT_ID: string;
     VALIDATION_ERROR: string;
     NOT_FOUND: string;
@@ -118,6 +120,8 @@ export const messages: { en: Translation; bn: Translation } = {
 
     // Errors
     errors: {
+      ADMIN_KEY_REQUIRED: "ক্লাস তৈরি করার জন্য অ্যাডমিন সিক্রেট কী প্রয়োজন। অনুগ্রহ করে অ্যাডমিন কী দিন।",
+      ADMIN_KEY_INVALID: "প্রদত্ত অ্যাডমিন কী সঠিক নয়। অনুগ্রহ করে সঠিক কী দিন।",
       INVALID_STUDENT_ID: "দয়া করে সঠিক ১৭ সংখ্যার জন্ম নিবন্ধন নম্বর লিখুন।",
       VALIDATION_ERROR: "ইনপুট মানগুলো সঠিকভাবে দিন এবং আবার চেষ্টা করুন।",
       NOT_FOUND: "অনুরোধকৃত ক্লাস বা আবেদনটি পাওয়া যায়নি।",
@@ -184,6 +188,8 @@ export const messages: { en: Translation; bn: Translation } = {
 
     // Errors
     errors: {
+      ADMIN_KEY_REQUIRED: "Class creation requires an admin key. Please provide the admin key.",
+      ADMIN_KEY_INVALID: "The provided admin key is invalid.",
       INVALID_STUDENT_ID: "Please enter a valid 17-digit birth registration number.",
       VALIDATION_ERROR: "Please check your input values and try again.",
       NOT_FOUND: "The requested class or application was not found.",

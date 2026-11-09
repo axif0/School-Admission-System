@@ -70,31 +70,39 @@ public class SchoolAdmissionFactory : WebApplicationFactory<Program>
     private readonly int _holdDurationSeconds;
     private readonly bool _rateLimitEnabled;
     private readonly int _rateLimitPerStudent;
+    private readonly string? _adminApiKey;
 
     public SchoolAdmissionFactory(
         string connectionString,
         int holdDurationSeconds = 600,
         bool rateLimitEnabled = false,
-        int rateLimitPerStudent = 10)
+        int rateLimitPerStudent = 10,
+        string? adminApiKey = null)
     {
         _connectionString = connectionString;
         _holdDurationSeconds = holdDurationSeconds;
         _rateLimitEnabled = rateLimitEnabled;
         _rateLimitPerStudent = rateLimitPerStudent;
+        _adminApiKey = adminApiKey;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureAppConfiguration((ctx, config) =>
         {
-            config.AddInMemoryCollection(new Dictionary<string, string?>
+            var inMem = new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Default"] = _connectionString,
                 ["HOLD_DURATION_SECONDS"] = _holdDurationSeconds.ToString(),
                 ["CORS_ALLOWED_ORIGINS"] = "http://localhost:3000",
                 ["RATE_LIMIT_ENABLED"] = _rateLimitEnabled.ToString(),
                 ["RATE_LIMIT_HOLDS_PER_MINUTE_PER_STUDENT"] = _rateLimitPerStudent.ToString()
-            });
+            };
+            if (!string.IsNullOrEmpty(_adminApiKey))
+            {
+                inMem["ADMIN_API_KEY"] = _adminApiKey;
+            }
+            config.AddInMemoryCollection(inMem);
         });
 
         builder.ConfigureServices(services =>

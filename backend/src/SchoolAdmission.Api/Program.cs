@@ -84,6 +84,14 @@ builder.Services.AddOptions<SweeperOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services.AddOptions<AdminOptions>()
+    .Configure<IConfiguration>((opt, config) =>
+    {
+        config.GetSection(AdminOptions.SectionName).Bind(opt);
+        if (config["ADMIN_API_KEY"] is { } key && !string.IsNullOrWhiteSpace(key))
+            opt.ApiKey = key;
+    });
+
 builder.Services.AddOptions<RateLimitOptions>()
     .Configure<IConfiguration>((opt, config) =>
     {

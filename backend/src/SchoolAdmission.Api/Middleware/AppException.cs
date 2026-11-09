@@ -21,7 +21,14 @@ public class AppException : Exception
     public static AppException ValidationError(string msg)
         => new(400, "VALIDATION_ERROR", msg);
 
+    // 401
+    public static AppException AdminKeyRequired(string msg = "Class creation requires an admin key")
+        => new(401, "ADMIN_KEY_REQUIRED", msg);
+
     // 403
+    public static AppException AdminKeyInvalid(string msg = "Admin key is invalid")
+        => new(403, "ADMIN_KEY_INVALID", msg);
+
     public static AppException NotYourHold()
         => new(403, "NOT_YOUR_HOLD", "You do not own this hold.");
 

@@ -71,7 +71,8 @@ export function getBaseUrl(): string {
 async function request<T>(
   endpoint: string,
   options: RequestInit = {},
-  studentId?: string | null
+  studentId?: string | null,
+  adminKey?: string | null
 ): Promise<T> {
   const url = `${getBaseUrl()}${endpoint}`;
   const headers = new Headers(options.headers || {});
@@ -82,6 +83,11 @@ async function request<T>(
 
   if (studentId) {
     headers.set('X-Student-Id', studentId);
+  }
+
+  const keyToUse = adminKey !== undefined ? adminKey : (typeof window !== 'undefined' ? sessionStorage.getItem('admin_api_key') : null);
+  if (keyToUse) {
+    headers.set('X-Admin-Key', keyToUse);
   }
 
   try {
@@ -97,7 +103,9 @@ async function request<T>(
 
     if (!res.ok) {
       if (isJson && data?.error) {
-        throw new ApiError(data.error.code, data.error.message, res.status);
+        const code = typeof data.error === 'string' ? data.error : (data.error.code || 'GENERIC_ERROR');
+        const message = (typeof data.error === 'object' && data.error.message) ? data.error.message : (data.message || 'Request failed');
+        throw new ApiError(code, message, res.status);
       }
       throw new ApiError('GENERIC_ERROR', typeof data === 'string' ? data : 'Request failed', res.status);
     }
@@ -114,11 +122,11 @@ async function request<T>(
 export const api = {
   getClasses: () => request<ClassItem[]>('/classes'),
   getClass: (classId: string) => request<ClassItem>(`/classes/${classId}`),
-  createClass: (payload: CreateClassPayload) =>
+  createClass: (payload: CreateClassPayload, adminKey?: string | null) =>
     request<ClassItem>('/classes', {
       method: 'POST',
       body: JSON.stringify(payload)
-    }),
+    }, null, adminKey),
   createHold: (classId: string, studentId: string) =>
     request<HoldResponse>(`/classes/${classId}/holds`, { method: 'POST' }, studentId),
   getHold: (holdId: string) => request<HoldResponse>(`/holds/${holdId}`),

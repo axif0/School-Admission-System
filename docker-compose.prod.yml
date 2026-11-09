@@ -15,6 +15,7 @@ services:
       SWAGGER_ENABLED: "false"
       RATE_LIMIT_ENABLED: "true"
       METRICS_ENABLED: "true"
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?set ADMIN_API_KEY}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost}
       ConnectionStrings__Default: Host=db;Port=5432;Database=school_admission;Username=postgres;Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD};Maximum Pool Size=50
 
