@@ -89,14 +89,39 @@ public class ObservabilityTests : IClassFixture<TestDatabaseFixture>
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
         using var client = factory.CreateClient();
 
+        // 1. Create a class and hold to trigger both counters and latency/duration histograms
+        var classRes = await client.PostAsJsonAsync("/classes", new { name = "Metrics Test Class", totalSeats = 10 });
+        Assert.Equal(HttpStatusCode.Created, classRes.StatusCode);
+        var cls = await classRes.Content.ReadFromJsonAsync<ClassResponse>();
+        Assert.NotNull(cls);
+
+        // Read classes
+        await client.GetAsync("/classes");
+
+        // Create hold
+        var holdReq = new HttpRequestMessage(HttpMethod.Post, $"/classes/{cls.Id}/holds");
+        holdReq.Headers.Add("X-Student-Id", "20158888888888881");
+        var holdRes = await client.SendAsync(holdReq);
+        Assert.Equal(HttpStatusCode.Created, holdRes.StatusCode);
+
+        // 2. Scrape /metrics
         var response = await client.GetAsync("/metrics");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var text = await response.Content.ReadAsStringAsync();
 
+        // Counters
         Assert.Contains("holds_created_total", text);
         Assert.Contains("holds_rejected_total{reason=\"SEATS_FULL\"}", text);
         Assert.Contains("confirms_total{result=\"CONFIRMED\"}", text);
         Assert.Contains("cancels_total", text);
         Assert.Contains("expired_swept_total", text);
+
+        // Histograms with standard Prometheus exposition format
+        Assert.Contains("hold_duration_seconds_bucket", text);
+        Assert.Contains("hold_duration_seconds_sum", text);
+        Assert.Contains("hold_duration_seconds_count", text);
+        Assert.Contains("class_read_latency_seconds_bucket", text);
+        Assert.Contains("class_read_latency_seconds_sum", text);
+        Assert.Contains("class_read_latency_seconds_count", text);
     }
 }
