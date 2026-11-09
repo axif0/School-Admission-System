@@ -64,6 +64,10 @@ builder.Services.AddOptions<DatabaseOptions>()
             opt.MaxConnections = maxConn;
         if (int.TryParse(config["EXPECTED_REPLICAS"], out var replicas))
             opt.ExpectedReplicas = replicas;
+        if (int.TryParse(config["DB_STARTUP_RETRIES"], out var retries))
+            opt.StartupRetries = retries;
+        if (int.TryParse(config["DB_STARTUP_RETRY_DELAY_SECONDS"], out var retryDelay))
+            opt.StartupRetryDelaySeconds = retryDelay;
     })
     .ValidateDataAnnotations()
     .ValidateOnStart();

@@ -183,6 +183,7 @@ services:
       db:
         condition: service_healthy
     environment:
+      ConnectionStrings__Default: Host=db;Port=5432;Database=school_admission_test;Username=postgres;Password=postgres;Maximum Pool Size=50
       TEST_ADMIN_CONNECTION_STRING: Host=db;Port=5432;Database=postgres;Username=postgres;Password=postgres
       HOLD_DURATION_SECONDS: 600
 

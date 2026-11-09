@@ -15,14 +15,17 @@ public static class DatabaseMigrator
 
     public static async Task MigrateAsync(IServiceProvider services, ILogger logger)
     {
+        var dbOptions = services.GetRequiredService<IOptions<DatabaseOptions>>().Value;
+        var maxAttempts = dbOptions.StartupRetries;
+        var delay = TimeSpan.FromSeconds(dbOptions.StartupRetryDelaySeconds);
+
         // Retry until Postgres is ready
-        for (int attempt = 1; attempt <= 30; attempt++)
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
                 using var scope = services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var dbOptions = scope.ServiceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
                 var advisoryKey = dbOptions.MigrationAdvisoryLockKey;
 
                 var conn = (NpgsqlConnection)db.Database.GetDbConnection();
@@ -58,13 +61,13 @@ public static class DatabaseMigrator
 
                 return; // success
             }
-            catch (NpgsqlException ex) when (attempt < 30)
+            catch (NpgsqlException ex) when (attempt < maxAttempts)
             {
-                logger.LogWarning("DB not ready (attempt {Attempt}): {Message}. Retrying in 2s...", attempt, ex.Message);
-                await Task.Delay(TimeSpan.FromSeconds(2));
+                logger.LogWarning("DB not ready (attempt {Attempt}/{Max}): {Message}. Retrying in {Delay}s...", attempt, maxAttempts, ex.Message, delay.TotalSeconds);
+                await Task.Delay(delay);
             }
         }
 
-        throw new InvalidOperationException("Could not connect to the database after 30 attempts.");
+        throw new InvalidOperationException($"Could not connect to the database after {maxAttempts} attempts.");
     }
 }

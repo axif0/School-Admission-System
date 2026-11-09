@@ -43,7 +43,9 @@ A production-ready full-stack admission system designed to handle heavy concurre
 
 ## 🚀 Quick Start (Docker)
 
-To run the entire system with Docker (requires only Docker and Docker Compose):
+To run the entire system with Docker:
+
+> **Prerequisites:** Docker Engine 24+ and **Docker Compose >= 2.24** (required for `depends_on: { condition: service_healthy }`).
 
 ```bash
 docker compose up --build

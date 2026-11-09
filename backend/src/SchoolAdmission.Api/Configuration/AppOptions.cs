@@ -29,6 +29,12 @@ public class DatabaseOptions
     public int ExpectedReplicas { get; set; } = 1;
 
     public int ReservedSuperuserConnections { get; set; } = 3;
+
+    [Range(1, 120, ErrorMessage = "DB_STARTUP_RETRIES must be between 1 and 120.")]
+    public int StartupRetries { get; set; } = 30;
+
+    [Range(1, 10, ErrorMessage = "DB_STARTUP_RETRY_DELAY_SECONDS must be between 1 and 10.")]
+    public int StartupRetryDelaySeconds { get; set; } = 2;
 }
 
 public class SweeperOptions
