@@ -39,10 +39,10 @@ public class ClassService : IClassService
         return res;
     }
 
-    public async Task<List<ClassDetailResponse>> GetAllAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<ClassDetailResponse>> GetAllAsync(CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
-        var result = await _coalescer.ExecuteCoalescedAsync(() => _store.GetAllClassesAsync(ct));
+        var result = await _coalescer.ExecuteCoalescedAsync(cancellationToken => _store.GetAllClassesAsync(cancellationToken), ct);
         sw.Stop();
         _metrics?.ClassReadLatencySeconds.Record(sw.Elapsed.TotalSeconds);
         return result;

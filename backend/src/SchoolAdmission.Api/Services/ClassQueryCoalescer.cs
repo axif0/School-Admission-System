@@ -6,12 +6,13 @@ namespace SchoolAdmission.Api.Services;
 /// Coalesces concurrent in-flight GET /classes database queries so that hundreds
 /// of simultaneous polling requests share a single database round-trip.
 /// Preserves strict Read-Your-Writes semantics via a monotonically increasing write version.
+/// Enforces immutability of returned data and isolates caller cancellations.
 /// </summary>
 public class ClassQueryCoalescer
 {
     private long _writeVersion = 0;
     private readonly object _lock = new();
-    private Task<List<ClassDetailResponse>>? _currentFlight;
+    private Task<IReadOnlyList<ClassDetailResponse>>? _currentFlight;
     private long _currentFlightVersion;
 
     public void OnWriteOccurred()
@@ -19,9 +20,12 @@ public class ClassQueryCoalescer
         Interlocked.Increment(ref _writeVersion);
     }
 
-    public Task<List<ClassDetailResponse>> ExecuteCoalescedAsync(
-        Func<Task<List<ClassDetailResponse>>> queryFactory)
+    public async Task<IReadOnlyList<ClassDetailResponse>> ExecuteCoalescedAsync(
+        Func<CancellationToken, Task<List<ClassDetailResponse>>> queryFactory,
+        CancellationToken callerCt = default)
     {
+        Task<IReadOnlyList<ClassDetailResponse>> flight;
+
         lock (_lock)
         {
             var currentVersion = Interlocked.Read(ref _writeVersion);
@@ -29,28 +33,49 @@ public class ClassQueryCoalescer
             // If a flight is active AND started at or after the latest write, join it
             if (_currentFlight != null && !_currentFlight.IsCompleted && _currentFlightVersion >= currentVersion)
             {
-                return _currentFlight;
+                flight = _currentFlight;
             }
-
-            // Start a new flight with the current write version
-            _currentFlightVersion = currentVersion;
-            var flight = QueryAndResetAsync(queryFactory);
-            _currentFlight = flight;
-            return flight;
+            else
+            {
+                // Start a new flight with the current write version.
+                // The underlying query executes with CancellationToken.None to prevent one caller's abort
+                // from failing concurrent callers.
+                _currentFlightVersion = currentVersion;
+                flight = QueryAndResetAsync(() => queryFactory(CancellationToken.None));
+                _currentFlight = flight;
+            }
         }
+
+        // Caller awaits the flight isolated by their own caller token
+        if (callerCt.CanBeCanceled)
+        {
+            return await flight.WaitAsync(callerCt);
+        }
+
+        return await flight;
     }
 
-    private async Task<List<ClassDetailResponse>> QueryAndResetAsync(
+    public Task<IReadOnlyList<ClassDetailResponse>> ExecuteCoalescedAsync(
+        Func<Task<List<ClassDetailResponse>>> queryFactory,
+        CancellationToken callerCt = default)
+    {
+        return ExecuteCoalescedAsync(_ => queryFactory(), callerCt);
+    }
+
+    private async Task<IReadOnlyList<ClassDetailResponse>> QueryAndResetAsync(
         Func<Task<List<ClassDetailResponse>>> queryFactory)
     {
         try
         {
-            return await queryFactory();
+            var result = await queryFactory();
+            // Return immutable read-only view
+            return result.AsReadOnly();
         }
         finally
         {
             lock (_lock)
             {
+                // Reset completed or faulted flight so subsequent calls start fresh
                 if (_currentFlight?.IsCompleted == true)
                 {
                     _currentFlight = null;

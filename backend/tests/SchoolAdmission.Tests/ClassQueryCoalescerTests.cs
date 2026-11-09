@@ -72,4 +72,68 @@ public class ClassQueryCoalescerTests
         // Caller B triggered a fresh execution!
         Assert.Equal(2, queryExecutionCount);
     }
+
+    [Fact]
+    public async Task Coalescer_CallerCancellationIsolation_CallerACancels_CallerBReceivesData_QueryExecutesOnce()
+    {
+        var coalescer = new ClassQueryCoalescer();
+        int queryExecutionCount = 0;
+        var tcs = new TaskCompletionSource();
+
+        async Task<List<ClassDetailResponse>> SlowQuery(CancellationToken _)
+        {
+            Interlocked.Increment(ref queryExecutionCount);
+            await tcs.Task;
+            return new List<ClassDetailResponse>
+            {
+                new("c_1", "Test Class 1", 10, 0, 0, 10)
+            };
+        }
+
+        using var ctsA = new CancellationTokenSource();
+
+        // Caller A starts query with its own token
+        var taskA = coalescer.ExecuteCoalescedAsync(SlowQuery, ctsA.Token);
+
+        // Caller B joins the flight with default token
+        var taskB = coalescer.ExecuteCoalescedAsync(SlowQuery, CancellationToken.None);
+
+        // Caller A aborts connection
+        ctsA.Cancel();
+
+        // Assert task A throws OperationCanceledException
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => taskA);
+
+        // Underlying database query completes
+        tcs.SetResult();
+
+        // Caller B still succeeds and gets data
+        var resultB = await taskB;
+        Assert.Single(resultB);
+        Assert.Equal("Test Class 1", resultB[0].Name);
+
+        // Query was executed only once!
+        Assert.Equal(1, queryExecutionCount);
+    }
+
+    [Fact]
+    public async Task Coalescer_ReturnedListIsImmutable_MutationsThrowNotSupportedException()
+    {
+        var coalescer = new ClassQueryCoalescer();
+        var result = await coalescer.ExecuteCoalescedAsync(() => Task.FromResult(new List<ClassDetailResponse>
+        {
+            new("c_1", "Test Class 1", 10, 0, 0, 10)
+        }));
+
+        Assert.IsAssignableFrom<IReadOnlyList<ClassDetailResponse>>(result);
+
+        // Attempting to cast to IList to mutate elements must throw NotSupportedException
+        if (result is IList<ClassDetailResponse> mutableList)
+        {
+            Assert.Throws<NotSupportedException>(() =>
+                mutableList.Add(new ClassDetailResponse("c_2", "Malicious Injected Class", 10, 0, 0, 10)));
+            Assert.Throws<NotSupportedException>(() =>
+                mutableList[0] = new ClassDetailResponse("c_1", "Overwritten Class", 10, 0, 0, 10));
+        }
+    }
 }
