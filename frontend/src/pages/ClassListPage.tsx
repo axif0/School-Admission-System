@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, ClassItem, MyHoldItem, ApiError } from '../api/client';
+import { api, getBaseUrl, ClassItem, MyHoldItem, ApiError } from '../api/client';
 import { Translation, getErrorMessage, Language } from '../i18n/messages';
 
 interface ClassListPageProps {
@@ -84,9 +84,27 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
     fetchData();
     scheduleNext(currentInterval);
 
+    // Subscribe to Server-Sent Events (SSE) for real-time push updates with fallback to polling
+    let eventSource: EventSource | null = null;
+    if (typeof EventSource !== 'undefined') {
+      try {
+        eventSource = new EventSource(`${getBaseUrl()}/classes/stream`);
+        eventSource.addEventListener('classes-updated', () => {
+          if (!isCancelled && document.visibilityState === 'visible') {
+            fetchData(true);
+          }
+        });
+      } catch {
+        // Fallback silently to adaptive polling if EventSource is unavailable
+      }
+    }
+
     return () => {
       isCancelled = true;
       clearTimeout(timeoutId);
+      if (eventSource) {
+        eventSource.close();
+      }
     };
   }, [studentId, isStudentIdValid]);
 
