@@ -59,11 +59,45 @@ public class HoldServiceUnitTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
+    private class FakeHoldSession : IHoldSession
+    {
+        private readonly FakeHoldStore _store;
+
+        public FakeHoldSession(FakeHoldStore store)
+        {
+            _store = store;
+        }
+
+        public Task<FastPathSeatCheckResult> CheckCapacityAsync(CancellationToken ct = default) =>
+            Task.FromResult(_store.FastPathResult);
+
+        public Task<IHoldTransaction> BeginLockedAsync(int lockTimeoutSeconds, CancellationToken ct = default)
+        {
+            _store.LockedBegunCount++;
+            return Task.FromResult<IHoldTransaction>(_store.Tx);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            _store.SessionsDisposedCount++;
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private class FakeHoldStore : IHoldStore
     {
         public FakeHoldTransaction Tx { get; set; } = new();
         public FastPathSeatCheckResult FastPathResult { get; set; } = new(true, 10, 0);
         public HoldOwnershipRecord? OwnershipRecord { get; set; }
+        public int SessionsOpenedCount { get; set; }
+        public int SessionsDisposedCount { get; set; }
+        public int LockedBegunCount { get; set; }
+
+        public Task<IHoldSession> OpenSessionAsync(string classId, CancellationToken ct = default)
+        {
+            SessionsOpenedCount++;
+            return Task.FromResult<IHoldSession>(new FakeHoldSession(this));
+        }
 
         public Task<FastPathSeatCheckResult> CheckFastPathSeatsAsync(string classId, CancellationToken ct = default) =>
             Task.FromResult(FastPathResult);
@@ -166,5 +200,29 @@ public class HoldServiceUnitTests
         Assert.Equal("h_1", res.HoldId);
         Assert.Equal(HoldStatus.Confirmed, res.Status);
         Assert.True(_fakeStore.Tx.Committed);
+    }
+
+    [Fact]
+    public async Task CreateHold_SingleConnectionPerRequest_OnSuccessAndFastPathReject()
+    {
+        // 1. Success path: exactly 1 session opened and disposed
+        _fakeStore.FastPathResult = new FastPathSeatCheckResult(true, 10, 0);
+        _fakeStore.Tx.TotalSeatsToReturn = 10;
+        _fakeStore.Tx.ActiveSeatsCount = 0;
+        _fakeStore.Tx.HasActiveHold = false;
+
+        var svc = CreateSvc();
+        var res = await svc.CreateHoldAsync("c_1", "20150000000000001");
+        Assert.NotNull(res);
+        Assert.Equal(1, _fakeStore.SessionsOpenedCount);
+        Assert.Equal(1, _fakeStore.LockedBegunCount);
+        Assert.Equal(1, _fakeStore.SessionsDisposedCount);
+
+        // 2. Fast-path rejection path: exactly 1 session opened and disposed, 0 locked transactions begun
+        _fakeStore.FastPathResult = new FastPathSeatCheckResult(true, 10, 10); // definitely full
+        await Assert.ThrowsAsync<AppException>(() => svc.CreateHoldAsync("c_1", "20150000000000002"));
+        Assert.Equal(2, _fakeStore.SessionsOpenedCount); // +1
+        Assert.Equal(1, _fakeStore.LockedBegunCount); // still 1 (no transaction begun)
+        Assert.Equal(2, _fakeStore.SessionsDisposedCount); // +1 (disposed immediately)
     }
 }
