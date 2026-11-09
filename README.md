@@ -2,6 +2,8 @@
 
 A production-ready full-stack admission system designed to handle heavy concurrency and flash traffic during school admission windows. Built with **.NET 8 (C#)**, **PostgreSQL 16**, and **React 18 (TypeScript + Vite)**.
 
+<img width="1151" height="733" alt="image" src="https://github.com/user-attachments/assets/14cadbce-4e80-41d7-939b-e2b8db5b393e" />
+
 ---
 
 ## 🌟 Key Features & Invariants
