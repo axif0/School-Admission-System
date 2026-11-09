@@ -41,11 +41,22 @@ public static class DatabaseMigrator
                     logger.LogInformation("Running EF Core migrations...");
                     await db.Database.MigrateAsync();
 
-                    // Create partial unique index (EF Core doesn't support partial indexes via HasFilter in all scenarios)
+                    // Create partial unique index and performance indexes
                     await using var idxCmd = new NpgsqlCommand(@"
                         CREATE UNIQUE INDEX IF NOT EXISTS ix_holds_unique_active
                         ON holds (class_id, student_id)
-                        WHERE status IN ('HELD','CONFIRMED')", conn);
+                        WHERE status IN ('HELD','CONFIRMED');
+
+                        CREATE INDEX IF NOT EXISTS ix_holds_sweeper_expiry
+                        ON holds (expires_at)
+                        WHERE status = 'HELD';
+
+                        CREATE INDEX IF NOT EXISTS ix_holds_active_covering
+                        ON holds (class_id, status, expires_at)
+                        WHERE status IN ('HELD','CONFIRMED');
+
+                        CREATE INDEX IF NOT EXISTS ix_classes_created_at
+                        ON classes (created_at ASC);", conn);
                     await idxCmd.ExecuteNonQueryAsync();
 
                     logger.LogInformation("Migrations complete.");

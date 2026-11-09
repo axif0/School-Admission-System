@@ -5,11 +5,11 @@ public static class HoldQueries
     public const string FastPathSeatCheck = @"
         SELECT
             c.total_seats,
-            COALESCE(SUM(CASE WHEN h.status IN ('HELD','CONFIRMED') AND (h.status='CONFIRMED' OR h.expires_at > now()) THEN 1 ELSE 0 END), 0)::int
+            (SELECT COUNT(*)::int FROM holds h
+             WHERE h.class_id = c.id
+               AND (h.status = 'CONFIRMED' OR (h.status = 'HELD' AND h.expires_at > now())))
         FROM classes c
-        LEFT JOIN holds h ON h.class_id = c.id
-        WHERE c.id = @classId
-        GROUP BY c.total_seats";
+        WHERE c.id = @classId";
 
     public const string SelectHoldById = @"
         SELECT id, class_id, status, expires_at, clock_timestamp() as server_time
