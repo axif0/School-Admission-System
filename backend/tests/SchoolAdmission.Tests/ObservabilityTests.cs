@@ -123,5 +123,33 @@ public class ObservabilityTests : IClassFixture<TestDatabaseFixture>
         Assert.Contains("class_read_latency_seconds_bucket", text);
         Assert.Contains("class_read_latency_seconds_sum", text);
         Assert.Contains("class_read_latency_seconds_count", text);
+
+        // 3. Scrape /metrics with OpenMetrics Accept header
+        var omReq = new HttpRequestMessage(HttpMethod.Get, "/metrics");
+        omReq.Headers.Add("Accept", "application/openmetrics-text; version=1.0.0");
+        var omRes = await client.SendAsync(omReq);
+        Assert.Equal(HttpStatusCode.OK, omRes.StatusCode);
+        var omText = await omRes.Content.ReadAsStringAsync();
+        Assert.Contains("# EOF", omText);
+    }
+
+    [Fact]
+    public async Task SseStreamEndpoint_EstablishesEventStreamAndPushesWriteEvents()
+    {
+        using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
+        using var client = factory.CreateClient();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var response = await client.GetAsync("/classes/stream", HttpCompletionOption.ResponseHeadersRead, cts.Token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
+        using var reader = new StreamReader(stream);
+
+        // Read initial ': connected' comment line
+        var firstLine = await reader.ReadLineAsync(cts.Token);
+        Assert.Equal(": connected", firstLine);
     }
 }

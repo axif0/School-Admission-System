@@ -72,4 +72,46 @@ public class AdminKeyTests : IClassFixture<TestDatabaseFixture>
         Assert.NotNull(cls);
         Assert.Equal("Secured Class 3", cls.Name);
     }
+
+    [Fact]
+    public async Task WhenStudentAuthSecretConfigured_EnforcesHmacTokenAndPreventsIdorSpoofing()
+    {
+        if (!_fixture.PostgresAvailable) return;
+
+        const string studentSecret = "hmac-student-signing-secret-2026";
+        using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString, studentAuthSecret: studentSecret);
+        var client = factory.CreateClient();
+
+        // Create a class
+        var clsRes = await client.PostAsJsonAsync("/classes", new CreateClassRequest("Token Auth Class", 10));
+        var cls = await clsRes.Content.ReadFromJsonAsync<ClassResponse>(JsonOpts);
+        Assert.NotNull(cls);
+
+        const string studentId = "20157777777777771";
+
+        // 1. Missing X-Student-Token -> 401 STUDENT_TOKEN_REQUIRED
+        var reqMissing = new HttpRequestMessage(HttpMethod.Post, $"/classes/{cls.Id}/holds");
+        reqMissing.Headers.Add("X-Student-Id", studentId);
+        var resMissing = await client.SendAsync(reqMissing);
+        Assert.Equal(HttpStatusCode.Unauthorized, resMissing.StatusCode);
+        var errMissing = await resMissing.Content.ReadFromJsonAsync<ErrorResponse>(JsonOpts);
+        Assert.Equal("STUDENT_TOKEN_REQUIRED", errMissing!.Error.Code);
+
+        // 2. Spoofed / invalid token -> 403 STUDENT_TOKEN_INVALID
+        var reqSpoof = new HttpRequestMessage(HttpMethod.Post, $"/classes/{cls.Id}/holds");
+        reqSpoof.Headers.Add("X-Student-Id", studentId);
+        reqSpoof.Headers.Add("X-Student-Token", "0000000000000000000000000000000000000000000000000000000000000000");
+        var resSpoof = await client.SendAsync(reqSpoof);
+        Assert.Equal(HttpStatusCode.Forbidden, resSpoof.StatusCode);
+        var errSpoof = await resSpoof.Content.ReadFromJsonAsync<ErrorResponse>(JsonOpts);
+        Assert.Equal("STUDENT_TOKEN_INVALID", errSpoof!.Error.Code);
+
+        // 3. Valid HMAC-SHA256 token -> 201 Created
+        var validToken = SchoolAdmission.Api.Middleware.StudentIdValidation.ComputeHmacToken(studentId, studentSecret);
+        var reqValid = new HttpRequestMessage(HttpMethod.Post, $"/classes/{cls.Id}/holds");
+        reqValid.Headers.Add("X-Student-Id", studentId);
+        reqValid.Headers.Add("X-Student-Token", validToken);
+        var resValid = await client.SendAsync(reqValid);
+        Assert.Equal(HttpStatusCode.Created, resValid.StatusCode);
+    }
 }

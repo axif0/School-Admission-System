@@ -71,19 +71,22 @@ public class SchoolAdmissionFactory : WebApplicationFactory<Program>
     private readonly bool _rateLimitEnabled;
     private readonly int _rateLimitPerStudent;
     private readonly string? _adminApiKey;
+    private readonly string? _studentAuthSecret;
 
     public SchoolAdmissionFactory(
         string connectionString,
         int holdDurationSeconds = 600,
         bool rateLimitEnabled = false,
         int rateLimitPerStudent = 10,
-        string? adminApiKey = null)
+        string? adminApiKey = null,
+        string? studentAuthSecret = null)
     {
         _connectionString = connectionString;
         _holdDurationSeconds = holdDurationSeconds;
         _rateLimitEnabled = rateLimitEnabled;
         _rateLimitPerStudent = rateLimitPerStudent;
         _adminApiKey = adminApiKey;
+        _studentAuthSecret = studentAuthSecret;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -101,6 +104,10 @@ public class SchoolAdmissionFactory : WebApplicationFactory<Program>
             if (!string.IsNullOrEmpty(_adminApiKey))
             {
                 inMem["ADMIN_API_KEY"] = _adminApiKey;
+            }
+            if (!string.IsNullOrEmpty(_studentAuthSecret))
+            {
+                inMem["STUDENT_AUTH_SECRET"] = _studentAuthSecret;
             }
             config.AddInMemoryCollection(inMem);
         });

@@ -71,6 +71,9 @@ public class HoldServiceUnitTests
         public Task<FastPathSeatCheckResult> CheckCapacityAsync(CancellationToken ct = default) =>
             Task.FromResult(_store.FastPathResult);
 
+        public Task<HoldOwnershipRecord?> GetHoldForOwnershipCheckAsync(string holdId, CancellationToken ct = default) =>
+            Task.FromResult(_store.OwnershipRecord);
+
         public Task<IHoldTransaction> BeginLockedAsync(int lockTimeoutSeconds, CancellationToken ct = default)
         {
             _store.LockedBegunCount++;
@@ -93,7 +96,7 @@ public class HoldServiceUnitTests
         public int SessionsDisposedCount { get; set; }
         public int LockedBegunCount { get; set; }
 
-        public Task<IHoldSession> OpenSessionAsync(string classId, CancellationToken ct = default)
+        public Task<IHoldSession> OpenSessionAsync(string? classId = null, CancellationToken ct = default)
         {
             SessionsOpenedCount++;
             return Task.FromResult<IHoldSession>(new FakeHoldSession(this));
@@ -224,5 +227,77 @@ public class HoldServiceUnitTests
         Assert.Equal(2, _fakeStore.SessionsOpenedCount); // +1
         Assert.Equal(1, _fakeStore.LockedBegunCount); // still 1 (no transaction begun)
         Assert.Equal(2, _fakeStore.SessionsDisposedCount); // +1 (disposed immediately)
+
+        // 3. Fast-path non-existent class: throws 404 NOT_FOUND without beginning a locked transaction
+        _fakeStore.FastPathResult = new FastPathSeatCheckResult(false, 0, 0);
+        var notFoundEx = await Assert.ThrowsAsync<AppException>(() => svc.CreateHoldAsync("c_missing", "20150000000000003"));
+        Assert.Equal(404, notFoundEx.StatusCode);
+        Assert.Equal("NOT_FOUND", notFoundEx.Code);
+        Assert.Equal(3, _fakeStore.SessionsOpenedCount);
+        Assert.Equal(1, _fakeStore.LockedBegunCount); // still 1 (no transaction begun)
+        Assert.Equal(3, _fakeStore.SessionsDisposedCount);
+    }
+
+    [Fact]
+    public async Task ConfirmHold_SingleConnectionPerRequest_OnSuccessAndOwnershipReject()
+    {
+        _fakeStore.OwnershipRecord = new HoldOwnershipRecord("c_1", HoldStatus.Held, "20151111111111111", DateTime.UtcNow.AddMinutes(5));
+        _fakeStore.Tx.HoldLockStateToReturn = new HoldLockState(HoldStatus.Held, DateTime.UtcNow.AddMinutes(5));
+
+        var svc = CreateSvc();
+
+        // 1. Success path: strictly 1 session opened, 1 transaction begun on same session, 1 session disposed
+        var res = await svc.ConfirmHoldAsync("h_1", "20151111111111111");
+        Assert.Equal(HoldStatus.Confirmed, res.Status);
+        Assert.Equal(1, _fakeStore.SessionsOpenedCount);
+        Assert.Equal(1, _fakeStore.LockedBegunCount);
+        Assert.Equal(1, _fakeStore.SessionsDisposedCount);
+
+        // 2. Ownership rejection path: strictly 1 session opened and disposed, 0 transactions begun
+        await Assert.ThrowsAsync<AppException>(() => svc.ConfirmHoldAsync("h_1", "20159999999999999"));
+        Assert.Equal(2, _fakeStore.SessionsOpenedCount);
+        Assert.Equal(1, _fakeStore.LockedBegunCount);
+        Assert.Equal(2, _fakeStore.SessionsDisposedCount);
+    }
+
+    [Fact]
+    public async Task CancelHold_SingleConnectionPerRequest_OnSuccessAndIdempotentFastPath()
+    {
+        _fakeStore.OwnershipRecord = new HoldOwnershipRecord("c_1", HoldStatus.Held, "20151111111111111", DateTime.UtcNow.AddMinutes(5));
+        _fakeStore.Tx.HoldLockStateToReturn = new HoldLockState(HoldStatus.Held, DateTime.UtcNow.AddMinutes(5));
+
+        var svc = CreateSvc();
+
+        // 1. Success path: strictly 1 session opened, 1 transaction begun, 1 session disposed
+        await svc.CancelHoldAsync("h_1", "20151111111111111");
+        Assert.Equal(1, _fakeStore.SessionsOpenedCount);
+        Assert.Equal(1, _fakeStore.LockedBegunCount);
+        Assert.Equal(1, _fakeStore.SessionsDisposedCount);
+
+        // 2. Already cancelled fast-path: 1 session opened & disposed, 0 locked transactions begun
+        _fakeStore.OwnershipRecord = new HoldOwnershipRecord("c_1", HoldStatus.Cancelled, "20151111111111111", DateTime.UtcNow.AddMinutes(5));
+        await svc.CancelHoldAsync("h_1", "20151111111111111");
+        Assert.Equal(2, _fakeStore.SessionsOpenedCount);
+        Assert.Equal(1, _fakeStore.LockedBegunCount);
+        Assert.Equal(2, _fakeStore.SessionsDisposedCount);
+    }
+
+    [Fact]
+    public async Task ClassWriteGate_WhenPerClassCapacitySaturated_Throws503TemporarilyBusy()
+    {
+        var gate = new ClassWriteGate(maxConcurrencyPerClass: 1);
+
+        // Hold the single slot for class c_hot
+        using var lease1 = await gate.EnterAsync("c_hot", TimeSpan.FromMilliseconds(100));
+
+        // Second request to c_hot times out and throws 503 TEMPORARILY_BUSY without touching DB pool
+        var ex = await Assert.ThrowsAsync<AppException>(async () =>
+            await gate.EnterAsync("c_hot", TimeSpan.FromMilliseconds(30)));
+
+        Assert.Equal(503, ex.StatusCode);
+        Assert.Equal("TEMPORARILY_BUSY", ex.Code);
+
+        // Request to a DIFFERENT class c_other succeeds immediately (isolated per classId!)
+        using var leaseOther = await gate.EnterAsync("c_other", TimeSpan.FromMilliseconds(100));
     }
 }
