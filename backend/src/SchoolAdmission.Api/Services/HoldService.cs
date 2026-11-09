@@ -39,8 +39,10 @@ public class HoldService : IHoldService
 
     public async Task<CreateHoldResponse> CreateHoldAsync(string classId, string studentId, CancellationToken ct = default)
     {
+        await using var session = await _store.OpenSessionAsync(classId, ct);
+
         // 1. Fast path: unlocked pre-check to reject full classes without lock contention
-        var fastCheck = await _store.CheckFastPathSeatsAsync(classId, ct);
+        var fastCheck = await session.CheckCapacityAsync(ct);
         if (fastCheck.Found && fastCheck.ActiveCount >= fastCheck.TotalSeats)
         {
             _metrics?.HoldsRejected.Add(1, new KeyValuePair<string, object?>("reason", "SEATS_FULL"));
@@ -52,7 +54,7 @@ public class HoldService : IHoldService
 
         try
         {
-            await using var tx = await _store.BeginHoldTransactionAsync(LockTimeoutSeconds, ct);
+            await using var tx = await session.BeginLockedAsync(LockTimeoutSeconds, ct);
             try
             {
                 // 2. Lock class row

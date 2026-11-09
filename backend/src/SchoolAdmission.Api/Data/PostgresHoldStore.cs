@@ -18,6 +18,13 @@ public class PostgresHoldStore : IHoldStore
 
     private NpgsqlConnection GetConnection() => (NpgsqlConnection)_db.Database.GetDbConnection();
 
+    public async Task<IHoldSession> OpenSessionAsync(string classId, CancellationToken ct = default)
+    {
+        var conn = GetConnection();
+        await conn.OpenAsync(ct);
+        return new PostgresHoldSession(conn, classId);
+    }
+
     public async Task<FastPathSeatCheckResult> CheckFastPathSeatsAsync(string classId, CancellationToken ct = default)
     {
         var conn = GetConnection();
@@ -138,12 +145,14 @@ public class PostgresHoldTransaction : IHoldTransaction
 {
     private readonly NpgsqlConnection _conn;
     private readonly NpgsqlTransaction _tx;
+    private readonly bool _ownsConnection;
     private bool _isDisposed;
 
-    public PostgresHoldTransaction(NpgsqlConnection conn, NpgsqlTransaction tx)
+    public PostgresHoldTransaction(NpgsqlConnection conn, NpgsqlTransaction tx, bool ownsConnection = true)
     {
         _conn = conn;
         _tx = tx;
+        _ownsConnection = ownsConnection;
     }
 
     public async Task SetLockTimeoutAsync(int timeoutSeconds, CancellationToken ct = default)
@@ -245,6 +254,54 @@ public class PostgresHoldTransaction : IHoldTransaction
         if (!_isDisposed)
         {
             await _tx.DisposeAsync();
+            if (_ownsConnection)
+            {
+                await _conn.CloseAsync();
+                await _conn.DisposeAsync();
+            }
+            _isDisposed = true;
+        }
+    }
+}
+
+public class PostgresHoldSession : IHoldSession
+{
+    private readonly NpgsqlConnection _conn;
+    private readonly string _classId;
+    private bool _isDisposed;
+
+    public PostgresHoldSession(NpgsqlConnection conn, string classId)
+    {
+        _conn = conn;
+        _classId = classId;
+    }
+
+    public async Task<FastPathSeatCheckResult> CheckCapacityAsync(CancellationToken ct = default)
+    {
+        await using var cmd = new NpgsqlCommand(HoldQueries.FastPathSeatCheck, _conn);
+        cmd.Parameters.AddWithValue("classId", _classId);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct))
+        {
+            var total = reader.GetInt32(0);
+            var active = reader.GetInt32(1);
+            return new FastPathSeatCheckResult(true, total, active);
+        }
+        return new FastPathSeatCheckResult(false, 0, 0);
+    }
+
+    public async Task<IHoldTransaction> BeginLockedAsync(int lockTimeoutSeconds, CancellationToken ct = default)
+    {
+        var tx = await _conn.BeginTransactionAsync(ct);
+        var holdTx = new PostgresHoldTransaction(_conn, tx, ownsConnection: false);
+        await holdTx.SetLockTimeoutAsync(lockTimeoutSeconds, ct);
+        return holdTx;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_isDisposed)
+        {
             await _conn.CloseAsync();
             await _conn.DisposeAsync();
             _isDisposed = true;
