@@ -36,10 +36,10 @@ public class HoldServiceUnitTests
             return Task.CompletedTask;
         }
         public Task<HoldLockState> LockHoldRowAsync(string holdId, CancellationToken ct = default) => Task.FromResult(HoldLockStateToReturn);
-        public Task ConfirmHoldAsync(string holdId, DateTime now, CancellationToken ct = default)
+        public Task<int> ConfirmHoldAsync(string holdId, DateTime now, CancellationToken ct = default)
         {
             Confirmed = true;
-            return Task.CompletedTask;
+            return Task.FromResult(1);
         }
         public Task CancelHoldAsync(string holdId, DateTime now, CancellationToken ct = default)
         {
