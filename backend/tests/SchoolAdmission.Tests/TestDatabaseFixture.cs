@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -94,6 +95,13 @@ public class SchoolAdmissionFactory : WebApplicationFactory<Program>
                 ["RATE_LIMIT_ENABLED"] = _rateLimitEnabled.ToString(),
                 ["RATE_LIMIT_HOLDS_PER_MINUTE_PER_STUDENT"] = _rateLimitPerStudent.ToString()
             });
+        });
+
+        builder.ConfigureServices(services =>
+        {
+            var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<AppDbContext>));
+            if (descriptor != null) services.Remove(descriptor);
+            services.AddDbContext<AppDbContext>(opt => opt.UseNpgsql(_connectionString));
         });
     }
 }

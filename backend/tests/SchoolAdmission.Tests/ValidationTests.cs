@@ -104,4 +104,24 @@ public class ValidationTests : IClassFixture<TestDatabaseFixture>
         var res = await client.SendAsync(req);
         Assert.Equal(HttpStatusCode.Created, res.StatusCode);
     }
+
+    [Fact]
+    public async Task ForeignKey_OrphanHoldInsert_FailsWith23503()
+    {
+        if (!_fixture.PostgresAvailable) return;
+
+        using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
+        var client = factory.CreateClient();
+        await client.GetAsync("/health/ready"); // ensures migrations run and DB is seeded
+
+        // Direct SQL insert with nonexistent class ID
+        await using var conn = new Npgsql.NpgsqlConnection(_fixture.ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new Npgsql.NpgsqlCommand(@"
+            INSERT INTO holds (id, class_id, student_id, status, expires_at, created_at)
+            VALUES ('h_orphan_test', 'c_non_existent_class', '20150000000000099', 'HELD', now() + interval '10 min', now())", conn);
+
+        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => cmd.ExecuteNonQueryAsync());
+        Assert.Equal("23503", ex.SqlState);
+    }
 }

@@ -94,6 +94,15 @@ namespace SchoolAdmission.Api.Data.Migrations
 
                     b.ToTable("holds", (string)null);
                 });
+
+            modelBuilder.Entity("SchoolAdmission.Api.Domain.Hold", b =>
+                {
+                    b.HasOne("SchoolAdmission.Api.Domain.Class", null)
+                        .WithMany()
+                        .HasForeignKey("ClassId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
 #pragma warning restore 612, 618
         }
     }

@@ -41,6 +41,11 @@ public class AppDbContext : DbContext
                 .HasDatabaseName("ix_holds_class_status_expires");
             e.HasIndex(h => h.StudentId)
                 .HasDatabaseName("ix_holds_student_id");
+
+            e.HasOne<Class>()
+                .WithMany()
+                .HasForeignKey(h => h.ClassId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         base.OnModelCreating(modelBuilder);
