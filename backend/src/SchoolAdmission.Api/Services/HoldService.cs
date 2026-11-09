@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using SchoolAdmission.Api.Configuration;
 using SchoolAdmission.Api.Contracts;
+using SchoolAdmission.Api.Data;
 using SchoolAdmission.Api.Data.Abstractions;
 using SchoolAdmission.Api.Domain;
 using SchoolAdmission.Api.Middleware;
@@ -107,7 +108,7 @@ public class HoldService : IHoldService
                 throw;
             }
         }
-        catch (NpgsqlException ex) when (ex.Message.Contains("lock timeout") || ex.Message.Contains("canceling statement"))
+        catch (Exception ex) when (PostgresErrorClassifier.IsBusy(ex, ct))
         {
             throw AppException.TemporarilyBusy();
         }
@@ -176,7 +177,7 @@ public class HoldService : IHoldService
                 throw;
             }
         }
-        catch (NpgsqlException ex) when (ex.Message.Contains("lock timeout") || ex.Message.Contains("canceling statement"))
+        catch (Exception ex) when (PostgresErrorClassifier.IsBusy(ex, ct))
         {
             throw AppException.TemporarilyBusy();
         }
@@ -234,7 +235,7 @@ public class HoldService : IHoldService
                 throw;
             }
         }
-        catch (NpgsqlException ex) when (ex.Message.Contains("lock timeout") || ex.Message.Contains("canceling statement"))
+        catch (Exception ex) when (PostgresErrorClassifier.IsBusy(ex, ct))
         {
             throw AppException.TemporarilyBusy();
         }
