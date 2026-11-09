@@ -55,7 +55,7 @@ public static class HoldQueries
 
     public const string ConfirmHold = @"
         UPDATE holds SET status='CONFIRMED', confirmed_at=@now
-        WHERE id=@holdId";
+        WHERE id=@holdId AND status='HELD' AND expires_at > @now";
 
     public const string CancelHold = @"
         UPDATE holds SET status='CANCELLED', cancelled_at=@now

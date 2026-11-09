@@ -160,7 +160,18 @@ public class HoldService : IHoldService
                     return new ConfirmHoldResponse(holdId, HoldStatus.Confirmed);
                 }
 
-                await tx.ConfirmHoldAsync(holdId, now, ct);
+                var rows = await tx.ConfirmHoldAsync(holdId, now, ct);
+                if (rows == 0)
+                {
+                    var recheck = await tx.LockHoldRowAsync(holdId, ct);
+                    if (recheck.Status == HoldStatus.Confirmed)
+                    {
+                        await tx.CommitAsync(CancellationToken.None);
+                        return new ConfirmHoldResponse(holdId, HoldStatus.Confirmed);
+                    }
+                    throw AppException.HoldExpired();
+                }
+
                 await tx.CommitAsync(CancellationToken.None);
                 _coalescer.OnWriteOccurred();
                 _metrics?.ConfirmsTotal.Add(1, new KeyValuePair<string, object?>("result", "CONFIRMED"));

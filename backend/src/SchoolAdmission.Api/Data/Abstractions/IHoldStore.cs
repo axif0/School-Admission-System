@@ -26,7 +26,7 @@ public interface IHoldTransaction : IAsyncDisposable
     Task<int> CountActiveSeatsAsync(string classId, CancellationToken ct = default);
     Task InsertHoldAsync(string id, string classId, string studentId, DateTime expiresAt, DateTime now, CancellationToken ct = default);
     Task<HoldLockState> LockHoldRowAsync(string holdId, CancellationToken ct = default);
-    Task ConfirmHoldAsync(string holdId, DateTime now, CancellationToken ct = default);
+    Task<int> ConfirmHoldAsync(string holdId, DateTime now, CancellationToken ct = default);
     Task CancelHoldAsync(string holdId, DateTime now, CancellationToken ct = default);
     Task CommitAsync(CancellationToken ct = default);
     Task RollbackAsync(CancellationToken ct = default);

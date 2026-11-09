@@ -39,6 +39,11 @@ public class SweeperOptions
 
     [Range(1, 3600, ErrorMessage = "SWEEPER_INTERVAL_SECONDS must be between 1 and 3600 seconds.")]
     public int IntervalSeconds { get; set; } = 5;
+
+    [Range(1, 10000, ErrorMessage = "SWEEPER_BATCH_SIZE must be between 1 and 10000.")]
+    public int BatchSize { get; set; } = 500;
+
+    public long AdvisoryLockKey { get; set; } = 987654321L;
 }
 
 public class RateLimitOptions

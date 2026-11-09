@@ -74,6 +74,10 @@ builder.Services.AddOptions<SweeperOptions>()
         config.GetSection(SweeperOptions.SectionName).Bind(opt);
         if (int.TryParse(config["SWEEPER_INTERVAL_SECONDS"], out var interval))
             opt.IntervalSeconds = interval;
+        if (int.TryParse(config["SWEEPER_BATCH_SIZE"], out var batchSize))
+            opt.BatchSize = batchSize;
+        if (long.TryParse(config["SWEEPER_ADVISORY_LOCK_KEY"], out var lockKey))
+            opt.AdvisoryLockKey = lockKey;
         if (bool.TryParse(config["SWEEPER_ENABLED"], out var enabled))
             opt.Enabled = enabled;
     })

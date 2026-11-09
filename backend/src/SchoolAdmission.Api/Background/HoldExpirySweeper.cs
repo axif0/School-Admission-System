@@ -64,13 +64,53 @@ public class HoldExpirySweeper : BackgroundService
         await conn.OpenAsync(ct);
         try
         {
-            await using var cmd = new NpgsqlCommand(
-                "UPDATE holds SET status='EXPIRED' WHERE status='HELD' AND expires_at <= clock_timestamp()", conn);
-            var rows = await cmd.ExecuteNonQueryAsync(ct);
-            if (rows > 0)
+            var lockKey = _options.Value.AdvisoryLockKey;
+            var batchSize = _options.Value.BatchSize;
+
+            while (!ct.IsCancellationRequested)
             {
-                _logger.LogInformation("Sweeper expired {Count} holds", rows);
-                _metrics?.ExpiredSweptTotal.Add(rows);
+                await using var tx = await conn.BeginTransactionAsync(ct);
+
+                // Transaction-level advisory lock: automatically released on commit/rollback
+                await using var lockCmd = new NpgsqlCommand("SELECT pg_try_advisory_xact_lock(@key)", conn, tx);
+                lockCmd.Parameters.AddWithValue("key", lockKey);
+                var acquired = (bool)(await lockCmd.ExecuteScalarAsync(ct) ?? false);
+
+                if (!acquired)
+                {
+                    _logger.LogDebug("Sweeper skipped (another instance sweeping).");
+                    await tx.RollbackAsync(ct);
+                    return; // Another replica is actively sweeping this tick
+                }
+
+                // Batched update with SKIP LOCKED to never block active writers
+                await using var sweepCmd = new NpgsqlCommand(@"
+                    WITH batch AS (
+                        SELECT id FROM holds
+                        WHERE status = 'HELD' AND expires_at <= clock_timestamp()
+                        ORDER BY expires_at
+                        LIMIT @batchSize
+                        FOR UPDATE SKIP LOCKED
+                    )
+                    UPDATE holds h
+                    SET status = 'EXPIRED'
+                    FROM batch
+                    WHERE h.id = batch.id", conn, tx);
+                sweepCmd.Parameters.AddWithValue("batchSize", batchSize);
+
+                var rows = await sweepCmd.ExecuteNonQueryAsync(ct);
+                await tx.CommitAsync(ct);
+
+                if (rows > 0)
+                {
+                    _logger.LogInformation("Sweeper expired {Count} holds in batch.", rows);
+                    _metrics?.ExpiredSweptTotal.Add(rows);
+                }
+
+                if (rows < batchSize)
+                    break;
+
+                await Task.Delay(25, ct); // Yield briefly between batches
             }
         }
         finally

@@ -223,12 +223,12 @@ public class PostgresHoldTransaction : IHoldTransaction
         return new HoldLockState(status, expiresAt);
     }
 
-    public async Task ConfirmHoldAsync(string holdId, DateTime now, CancellationToken ct = default)
+    public async Task<int> ConfirmHoldAsync(string holdId, DateTime now, CancellationToken ct = default)
     {
         await using var cmd = new NpgsqlCommand(HoldQueries.ConfirmHold, _conn, _tx);
         cmd.Parameters.AddWithValue("now", now);
         cmd.Parameters.AddWithValue("holdId", holdId);
-        await cmd.ExecuteNonQueryAsync(ct);
+        return await cmd.ExecuteNonQueryAsync(ct);
     }
 
     public async Task CancelHoldAsync(string holdId, DateTime now, CancellationToken ct = default)
