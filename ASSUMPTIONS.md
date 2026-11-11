@@ -1,83 +1,17 @@
-# Assumptions & Architecture Decisions
+# Assumptions
 
-This document records all choices where the assignment specification was silent.
+The specification does not explicitly define a few business rules and UI behaviors. For those cases, the following assumptions were made to keep the system practical and user-friendly.
 
----
+**Applying to Multiple Classes or Shifts:** A student can apply to and confirm admission in multiple classes or shifts simultaneously. Since the specification restricts a student to one active application per class and treats each shift as a separate class, allowing applications across different classes lets parents keep backup shift options.
 
-## 1. API & Domain Decisions
+**Reapplying After Cancellation or Expiry:** Students can apply again to the same class if their previous application is `CANCELLED` or `EXPIRED`. Only active (`HELD` or `CONFIRMED`) applications block a new hold, ensuring students do not lose their chance if they cancelled by mistake or missed the payment window.
 
-| Topic | Decision | Source | Reason |
-|-------|----------|--------|--------|
-| Create class success code | `201 Created` | SPEC | Standard RESTful creation status code. |
-| No seats on apply | `409 NO_SEATS_AVAILABLE` | SPEC | Required by assignment specification. |
-| Cancel success code | `204 NoContent` | SPEC | Resource state transition complete; no body needed. |
-| ID format | `c_` + 12-char alphanumeric (classes), `h_` + 12-char (holds) | CHOICE | Unguessable, URL-safe identifiers prefixed for readability and test clarity. |
-| Standard error response shape | `{ "error": { "code": "...", "message": "...", "traceId": "..." } }` | CHOICE | Clear machine-readable error codes paired with human-readable explanations and request trace ID; no internal stack traces leaked. |
-| Check order for hold actions | 1) header `400` → 2) exists `404` → 3) ownership `403` → 4) state/business rule `409` | CHOICE | Natural defensive order: validate syntax before DB lookups, check ownership before exposing state conflict. |
-| Student already applied AND class full | `ALREADY_APPLIED` | CHOICE | Duplicate student check precedes seat count check inside the locked transaction. |
-| Missing/blank/invalid `X-Student-Id` | `400 INVALID_STUDENT_ID` | CHOICE | Header must be present, non-blank after trimming, $\le 64$ characters, no control characters. Format is kept lenient on backend to allow API tests with arbitrary test identifiers. |
-| Invalid class body | `400 VALIDATION_ERROR` | CHOICE | `name`: 1-100 characters; `totalSeats`: integer between 1 and 100,000. |
-| Class/hold not found | `404 NOT_FOUND` | CHOICE | Consistent standard 404 response for any missing entity or malformed ID. |
-| Duplicate hold by student in same class | `409 ALREADY_APPLIED` | CHOICE | Enforces rule B4 (at most one active or confirmed hold per student per class). |
-| Confirm on expired hold | `409 HOLD_EXPIRED` | CHOICE | Distinguishes expiration from cancellation or ownership errors. |
-| Confirm on cancelled hold | `409 HOLD_CANCELLED` | CHOICE | Application was explicitly cancelled. |
-| Confirm/Delete foreign hold | `403 NOT_YOUR_HOLD` | CHOICE | Prevents applicants from tampering with other applicants' holds. |
-| Confirm an already `CONFIRMED` hold | `200 CONFIRMED`, no change | SPEC | Mandated idempotent confirmation; `confirmedSeats` only increments once. |
-| `DELETE` on `HELD` | `204 NoContent`, becomes `CANCELLED` | SPEC | Immediate release of seat reservation. |
-| `DELETE` on `CONFIRMED` | `409 ALREADY_CONFIRMED` | CHOICE | Admission fee has been processed; cancellation/refunds are out of scope. |
-| `DELETE` on `CANCELLED` or `EXPIRED` | `204 NoContent` | CHOICE | Idempotent cancellation; resource is already inactive. |
-| Same student in different classes | Allowed | SPEC | Rule B4 specifies "in a class". Morning and Day shifts are independent classes. |
-| Duplicate class names | Allowed | CHOICE | Class ID is the unique identity; schools may run concurrent sections with similar labels. |
-| `expiresAt` after confirm | Keep original timestamp | CHOICE | The UI and counting logic ignore `expiresAt` once status is `CONFIRMED`. |
-| `GET /holds/{id}` auth header | No header required | SPEC | Unguessable hold IDs; allows status verification. |
-| `GET /classes` ordering | Creation time ascending | CHOICE | Predictable order without pagination. |
-| Time source | PostgreSQL database clock (`clock_timestamp()`) | CHOICE | Guarantees atomic, synchronized time evaluation across multiple backend instances. |
-| Overload / Lock timeout handling | `503 TEMPORARILY_BUSY` | CHOICE | Friendly user-facing notification when row lock waits exceed timeout. |
-| UI polling interval | 4 seconds | SPEC/CHOICE | Keeps seat counts live without overwhelming the server. |
+**Cancelling Confirmed Applications:** Only applications in the `HELD` state can be cancelled (`DELETE /holds/{holdId}`), while attempting to cancel a `CONFIRMED` application returns `409 Conflict`. Since fee payment finalizes admission and the specification defines no refund or post-admission cancellation flow, confirmed seats remain locked.
 
----
+**Duplicate Class Names:** Admins are allowed to create multiple classes with the same name. Because each class is uniquely identified by its generated ID (`c_...`), separate batches or sections can share a display name without causing conflicts.
 
-## 2. Multi-Process Concurrency Safety (Bonus)
+**Existing Applications on the Class List:** When a student already has a `HELD` or `CONFIRMED` application in a class, the class list shows a "View Application" button instead of "Apply". This prevents avoidable `409 Conflict` errors from duplicate clicks and takes the user directly to their active application.
 
-### Why the architecture is safe across multiple backend processes:
-1. **The Database is the Lock:**
-   No in-memory concurrency primitives (`lock`, `SemaphoreSlim`, `ConcurrentDictionary`) are used for seat reservation correctness.
-2. **Class-Row `FOR UPDATE` Serialization:**
-   When `POST /classes/{id}/holds` is invoked:
-   ```sql
-   SELECT total_seats FROM classes WHERE id = @classId FOR UPDATE;
-   ```
-   PostgreSQL enforces an exclusive row-level lock on the specific class row. Any other concurrent request (whether on Backend 1, Backend 2, or further instances) blocks on this lock until the active transaction commits or rolls back.
-3. **`clock_timestamp()` vs `now()`:**
-   Because a transaction may wait several milliseconds for a lock, `clock_timestamp()` is evaluated *after* acquiring the lock, ensuring fresh timestamps rather than the stale transaction start time returned by `now()`.
-4. **Partial Unique Index Safety Net:**
-   ```sql
-   CREATE UNIQUE INDEX ix_holds_unique_active
-   ON holds (class_id, student_id)
-   WHERE status IN ('HELD','CONFIRMED');
-   ```
-   Guarantees at the storage engine level that duplicate active holds can never be inserted even if an unexpected condition arose.
-5. **Advisory Lock Coordination for Migrations & Sweeper:**
-   - Startup database migrations use `pg_advisory_lock(123456789)` in `DatabaseMigrator` so only one replica executes schema DDL while others wait.
-   - Background hold cleanup uses `pg_try_advisory_xact_lock(987654321)` with `FOR UPDATE SKIP LOCKED` in `HoldExpirySweeper` so multiple backend replicas never collide or block active reservations.
-6. **Empirical Multi-Process Verification:**
-   - Verified via `ConcurrencyTests.TwoSeparateBackendInstances_AgainstSameDb_ZeroOverbooking` and a live 500-VU k6 stampede split evenly across `backend` (`:8080`) and `backend2` (`:8081`) competing for a 120-seat class: exactly 120 seats were held (`heldSeats=120, availableSeats=0`) with zero overselling and 0.00% unexpected HTTP errors.
+**Additional Practical Enhancements:** To make the application smoother to use, the UI includes a Bangla/English language switcher, visual seat-capacity progress bars, countdown warning colors, and real-time seat updates via Server-Sent Events (SSE) with a 4-second polling fallback. On the backend, `X-Student-Id` validation accepts any non-blank string up to 64 characters so automated API tests can use arbitrary test IDs while the UI enforces the 17-digit birth registration number.
 
----
-
-## 3. Expiry and Simulated Payment Strategy
-- **Derived Expiry:** Expiry correctness does not rely on a scheduled background worker. Every read endpoint (`GET /classes`, `GET /classes/{id}`, `GET /holds/{id}`, `GET /me/holds`) derives hold status using `expires_at > clock_timestamp()`. A lightweight background sweeper runs periodically solely for database cleanup.
-- **Simulated Payment:** Clicking "Pay Admission Fee" immediately completes the simulated payment transaction via `POST /holds/{id}/confirm`.
-
----
-
-## 4. Frontend Runtime Configuration & Clock Skew
-- **True Environment Variable (`API_URL`):** Docker nginx container generates `config.js` via an entrypoint script before starting nginx. This allows changing the backend URL at deployment time without rebuilding Vite assets.
-- **Clock Skew Compensation:** The frontend calculates the clock difference `offset = serverTime - clientNow` on fetching hold details, ensuring that client machine clock drift does not cause premature or delayed hold expiry.
-
----
-
-## 5. Security & Performance Enhancements
-- **SingleFlight Query Coalescing:** Multiple concurrent requests for `GET /classes` share a single in-flight database query via `ClassQueryCoalescer`, protecting PostgreSQL from read stampedes while guaranteeing read-your-writes consistency across mutations.
-- **Configurable Rate Limiting:** Built-in sliding window rate limiter protects endpoints from brute force and denial of service (`RATE_LIMIT_ENABLED=true`).
-- **Non-Root Containers:** Backend runs as unprivileged `.NET` user (UID 1654), frontend runs under unprivileged Nginx (UID 101), with read-only root filesystems and explicit resource limits.
+**Multi-Process Concurrency Safety (Bonus):** To ensure `held + confirmed` never exceeds `totalSeats` even when two or more backend processes run on different ports against the same PostgreSQL database, seat allocation relies entirely on database-level locking rather than in-memory locks. During hold creation, the transaction locks the target class row with `SELECT total_seats FROM classes WHERE id = @classId FOR UPDATE`, evaluates expiry using PostgreSQL's `clock_timestamp()`, and enforces a partial unique index on `(class_id, student_id) WHERE status IN ('HELD', 'CONFIRMED')` so concurrent requests across processes are strictly serialized.
