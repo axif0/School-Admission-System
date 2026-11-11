@@ -22,8 +22,6 @@ public class ConcurrencyTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task NoOverselling_UnderHeavyParallelLoad_NeverExceedsTotalSeats()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
         var client = factory.CreateClient();
 
@@ -68,8 +66,6 @@ public class ConcurrencyTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task SameStudent_ParallelRequests_OnlyOneSucceeds()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
         var client = factory.CreateClient();
 
@@ -108,8 +104,6 @@ public class ConcurrencyTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task MixedOps_HoldConfirmCancel_ConcurrentlyNeverExceedsSeats()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
         var client = factory.CreateClient();
 
@@ -163,8 +157,6 @@ public class ConcurrencyTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task TwoSeparateBackendInstances_AgainstSameDb_ZeroOverbooking()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         // Simulate Section 1.6 Bonus: two separate backend process instances hitting the same database
         using var factory1 = new SchoolAdmissionFactory(_fixture.ConnectionString);
         using var factory2 = new SchoolAdmissionFactory(_fixture.ConnectionString);
@@ -213,8 +205,6 @@ public class ConcurrencyTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task SimultaneousStartup_CompetingOnMigration_AdvisoryLockEnsuresSingleRun()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         // Launch two migrations simultaneously against the same DB
         using var f1 = new SchoolAdmissionFactory(_fixture.ConnectionString);
         using var f2 = new SchoolAdmissionFactory(_fixture.ConnectionString);

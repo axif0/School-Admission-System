@@ -147,7 +147,7 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
         <div>
           <h1 style={{ margin: 0, color: '#0f172a', fontSize: '1.65rem' }}>{t.classListTitle}</h1>
           <p style={{ margin: '0.3rem 0 0', color: '#64748b', fontSize: '0.9rem' }}>
-            {t.seatsStatus} (স্বয়ংক্রিয়ভাবে প্রতি ৪ সেকেন্ডে আপডেট হয়)
+            {t.seatsStatus} ({lang === 'bn' ? 'স্বয়ংক্রিয়ভাবে প্রতি ৪ সেকেন্ডে আপডেট হয়' : 'Updates automatically every 4 seconds'})
           </p>
         </div>
         <Link
@@ -197,7 +197,7 @@ export const ClassListPage: React.FC<ClassListPageProps> = ({
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-          <p style={{ fontSize: '1.1rem' }}>ক্লাস তালিকা লোড হচ্ছে...</p>
+          <p style={{ fontSize: '1.1rem' }}>{lang === 'bn' ? 'ক্লাস তালিকা লোড হচ্ছে...' : 'Loading classes...'}</p>
         </div>
       ) : classes.length === 0 ? (
         <div style={{

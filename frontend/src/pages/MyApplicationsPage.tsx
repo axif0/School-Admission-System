@@ -20,32 +20,68 @@ export const MyApplicationsPage: React.FC<MyApplicationsPageProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMyHolds = async () => {
+  const fetchMyHolds = async (isBackground = false) => {
     if (!isStudentIdValid || !studentId) {
       setHolds([]);
-      setLoading(false);
+      if (!isBackground) setLoading(false);
       return;
     }
 
     try {
-      setLoading(true);
-      setError(null);
+      if (!isBackground) {
+        setLoading(true);
+        setError(null);
+      }
       const data = await api.getMyHolds(studentId);
       setHolds(data);
     } catch (err: any) {
-      if (err instanceof ApiError) {
-        setError(getErrorMessage(err.code, err.message, lang));
-      } else {
-        setError(t.errors.GENERIC_ERROR);
+      if (!isBackground) {
+        if (err instanceof ApiError) {
+          setError(getErrorMessage(err.code, err.message, lang));
+        } else {
+          setError(t.errors.GENERIC_ERROR);
+        }
       }
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchMyHolds();
+
+    if (!isStudentIdValid || !studentId) return;
+
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchMyHolds(true);
+      }
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
   }, [studentId, isStudentIdValid]);
+
+  useEffect(() => {
+    const hasActiveHeld = holds.some((h) => h.status === 'HELD');
+    if (!hasActiveHeld) return;
+
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setHolds((prev) => {
+        const needsExpiry = prev.some(
+          (h) => h.status === 'HELD' && new Date(h.expiresAt).getTime() <= now
+        );
+        if (!needsExpiry) return prev;
+        return prev.map((h) =>
+          h.status === 'HELD' && new Date(h.expiresAt).getTime() <= now
+            ? { ...h, status: 'EXPIRED' }
+            : h
+        );
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [holds]);
 
   return (
     <div style={{ maxWidth: '950px', margin: '2rem auto', padding: '0 1rem' }}>
@@ -74,7 +110,7 @@ export const MyApplicationsPage: React.FC<MyApplicationsPageProps> = ({
           ❌ {error}
         </div>
       ) : loading ? (
-        <p style={{ color: '#64748b' }}>আবেদনের তালিকা লোড হচ্ছে...</p>
+        <p style={{ color: '#64748b' }}>{lang === 'bn' ? 'আবেদনের তালিকা লোড হচ্ছে...' : 'Loading applications...'}</p>
       ) : holds.length === 0 ? (
         <div style={{
           backgroundColor: '#ffffff',
@@ -136,7 +172,7 @@ export const MyApplicationsPage: React.FC<MyApplicationsPageProps> = ({
                     {h.status}
                   </span>
                   <span style={{ color: '#64748b', fontSize: '0.88rem' }}>
-                    আইডি: <code style={{ color: '#0f172a' }}>{h.holdId}</code>
+                    {lang === 'bn' ? 'আইডি:' : 'ID:'} <code style={{ color: '#0f172a' }}>{h.holdId}</code>
                   </span>
                 </div>
               </div>

@@ -64,7 +64,7 @@ public class HoldExpirySweeper : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var conn = (NpgsqlConnection)db.Database.GetDbConnection();
+        await using var conn = new NpgsqlConnection(db.Database.GetConnectionString());
         await conn.OpenAsync(ct);
         try
         {

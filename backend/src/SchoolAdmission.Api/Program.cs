@@ -288,11 +288,14 @@ app.MapGet("/metrics", (HttpContext ctx, IOptions<ObservabilityOptions> obsOptio
     return Results.Content(metrics.ToPrometheusFormat(useOpenMetrics), contentType);
 });
 
-app.MapGet("/health/ready", async (AppDbContext db) =>
+app.MapGet("/health/ready", async (AppDbContext db, IConfiguration config) =>
 {
     if (!DatabaseMigrator.IsReady)
         return Results.Json(new { status = "unhealthy", error = "Database migrations in progress" },
             statusCode: 503);
+
+    if (bool.TryParse(config["SKIP_DB_MIGRATION"], out var skip) && skip)
+        return Results.Ok(new { status = "ready" });
 
     try
     {

@@ -11,9 +11,6 @@ interface CreateClassPageProps {
 export const CreateClassPage: React.FC<CreateClassPageProps> = ({ t, lang }) => {
   const [name, setName] = useState('');
   const [totalSeats, setTotalSeats] = useState<number | ''>(120);
-  const [adminKey, setAdminKey] = useState<string>(() => {
-    return typeof window !== 'undefined' ? (sessionStorage.getItem('admin_api_key') || '') : '';
-  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -39,7 +36,7 @@ export const CreateClassPage: React.FC<CreateClassPageProps> = ({ t, lang }) => 
       await api.createClass({
         name: name.trim(),
         totalSeats
-      }, adminKey.trim() || null);
+      });
       setSuccess(t.classCreatedSuccess);
       setTimeout(() => navigate('/'), 1200);
     } catch (err: any) {
@@ -143,40 +140,6 @@ export const CreateClassPage: React.FC<CreateClassPageProps> = ({ t, lang }) => 
           />
         </div>
 
-        <div style={{ marginBottom: '1.75rem' }}>
-          <label
-            htmlFor="admin-key"
-            style={{ display: 'block', fontWeight: 700, marginBottom: '0.5rem', color: '#1e293b' }}
-          >
-            {lang === 'bn' ? 'অ্যাডমিন কী (যদি সার্ভারে প্রয়োজন হয়)' : 'Admin Key (optional / if configured)'}
-          </label>
-          <input
-            id="admin-key"
-            type="password"
-            value={adminKey}
-            onChange={(e) => {
-              const val = e.target.value;
-              setAdminKey(val);
-              if (typeof window !== 'undefined') {
-                if (val) {
-                  sessionStorage.setItem('admin_api_key', val);
-                } else {
-                  sessionStorage.removeItem('admin_api_key');
-                }
-              }
-            }}
-            placeholder={lang === 'bn' ? 'প্রয়োজন হলে অ্যাডমিন কী দিন' : 'Enter admin secret key if required'}
-            style={{
-              width: '100%',
-              padding: '0.8rem 1rem',
-              borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              fontSize: '1rem',
-              boxSizing: 'border-box'
-            }}
-          />
-        </div>
-
         <div style={{ display: 'flex', gap: '1rem' }}>
           <button
             type="submit"
@@ -193,7 +156,7 @@ export const CreateClassPage: React.FC<CreateClassPageProps> = ({ t, lang }) => 
               boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)'
             }}
           >
-            {loading ? t.submitting : 'সংরক্ষণ করুন (Save Class)'}
+            {loading ? t.submitting : (lang === 'bn' ? 'সংরক্ষণ করুন (Save Class)' : 'Save Class')}
           </button>
           <button
             type="button"
@@ -209,7 +172,7 @@ export const CreateClassPage: React.FC<CreateClassPageProps> = ({ t, lang }) => 
               cursor: 'pointer'
             }}
           >
-            বাতিল
+            {lang === 'bn' ? 'বাতিল' : 'Cancel'}
           </button>
         </div>
       </form>

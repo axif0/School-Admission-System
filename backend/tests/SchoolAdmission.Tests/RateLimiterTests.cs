@@ -18,8 +18,6 @@ public class RateLimiterTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task RateLimiter_WhenEnabled_RejectsExceedingRequestsWith429AndRetryAfter()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         // Factory with Rate Limit ENABLED: limit of 2 holds per minute for a student
         using var factory = new SchoolAdmissionFactory(
             _fixture.ConnectionString,
@@ -63,8 +61,6 @@ public class RateLimiterTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task RateLimiter_WhenDisabled_AllowsExceedingRequestsWithout429()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         // Factory with Rate Limit DISABLED (default)
         using var factory = new SchoolAdmissionFactory(
             _fixture.ConnectionString,

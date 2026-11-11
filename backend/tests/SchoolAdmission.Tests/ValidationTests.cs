@@ -22,8 +22,6 @@ public class ValidationTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task MissingOrBlankStudentId_Returns400InvalidStudentId()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
         var client = factory.CreateClient();
 
@@ -46,8 +44,6 @@ public class ValidationTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task InvalidClassBody_Returns400ValidationError()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
         var client = factory.CreateClient();
 
@@ -67,8 +63,6 @@ public class ValidationTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task NonExistentClassOrHold_Returns404NotFound()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
         var client = factory.CreateClient();
 
@@ -86,8 +80,6 @@ public class ValidationTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task PostHoldsAndConfirm_AcceptsEmptyBody()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
         var client = factory.CreateClient();
 

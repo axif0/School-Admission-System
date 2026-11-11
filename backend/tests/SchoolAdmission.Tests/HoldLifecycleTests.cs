@@ -22,8 +22,6 @@ public class HoldLifecycleTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task ExpiryFreesSeat_AutomaticallyWithoutApiCall()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         // Set hold duration to 1 second
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString, holdDurationSeconds: 1);
         var client = factory.CreateClient();
@@ -69,8 +67,6 @@ public class HoldLifecycleTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task ConfirmRules_ValidHold_Idempotent_ExpiredAndForeignRejected()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString, holdDurationSeconds: 1);
         var client = factory.CreateClient();
 
@@ -118,8 +114,6 @@ public class HoldLifecycleTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task CancelRules_HeldFreed_ConfirmedRejected_IdempotentOnCancelled()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString);
         var client = factory.CreateClient();
 

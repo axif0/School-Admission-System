@@ -17,7 +17,7 @@ public static class ClassQueries
         LEFT JOIN (
             SELECT
                 class_id,
-                SUM(CASE WHEN status = 'HELD' AND expires_at > now() THEN 1 ELSE 0 END)::int AS held_seats,
+                SUM(CASE WHEN status = 'HELD' AND expires_at > clock_timestamp() THEN 1 ELSE 0 END)::int AS held_seats,
                 SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END)::int AS confirmed_seats
             FROM holds
             WHERE status IN ('HELD', 'CONFIRMED')
@@ -30,7 +30,7 @@ public static class ClassQueries
             c.id,
             c.name,
             c.total_seats,
-            (SELECT COUNT(*)::int FROM holds h WHERE h.class_id = c.id AND h.status = 'HELD' AND h.expires_at > now()) AS held_seats,
+            (SELECT COUNT(*)::int FROM holds h WHERE h.class_id = c.id AND h.status = 'HELD' AND h.expires_at > clock_timestamp()) AS held_seats,
             (SELECT COUNT(*)::int FROM holds h WHERE h.class_id = c.id AND h.status = 'CONFIRMED') AS confirmed_seats
         FROM classes c
         WHERE c.id = @classId";

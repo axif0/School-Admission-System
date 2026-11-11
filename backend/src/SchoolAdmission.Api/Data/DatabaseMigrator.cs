@@ -15,6 +15,13 @@ public static class DatabaseMigrator
 
     public static async Task MigrateAsync(IServiceProvider services, ILogger logger)
     {
+        var config = services.GetRequiredService<IConfiguration>();
+        if (bool.TryParse(config["SKIP_DB_MIGRATION"], out var skip) && skip)
+        {
+            IsReady = true;
+            return;
+        }
+
         var dbOptions = services.GetRequiredService<IOptions<DatabaseOptions>>().Value;
         var maxAttempts = dbOptions.StartupRetries;
         var delay = TimeSpan.FromSeconds(dbOptions.StartupRetryDelaySeconds);
@@ -28,7 +35,7 @@ public static class DatabaseMigrator
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var advisoryKey = dbOptions.MigrationAdvisoryLockKey;
 
-                var conn = (NpgsqlConnection)db.Database.GetDbConnection();
+                await using var conn = new NpgsqlConnection(db.Database.GetConnectionString());
                 await conn.OpenAsync();
 
                 // Acquire advisory lock (blocking)

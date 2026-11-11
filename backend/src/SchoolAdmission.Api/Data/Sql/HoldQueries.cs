@@ -7,7 +7,7 @@ public static class HoldQueries
             c.total_seats,
             (SELECT COUNT(*)::int FROM holds h
              WHERE h.class_id = c.id
-               AND (h.status = 'CONFIRMED' OR (h.status = 'HELD' AND h.expires_at > now())))
+               AND (h.status = 'CONFIRMED' OR (h.status = 'HELD' AND h.expires_at > clock_timestamp())))
         FROM classes c
         WHERE c.id = @classId";
 
@@ -16,7 +16,7 @@ public static class HoldQueries
         FROM holds WHERE id = @holdId";
 
     public const string SelectHoldsByStudent = @"
-        SELECT h.id, h.class_id, c.name, h.status, h.expires_at, now() as server_now
+        SELECT h.id, h.class_id, c.name, h.status, h.expires_at, clock_timestamp() as server_now
         FROM holds h
         JOIN classes c ON c.id = h.class_id
         WHERE h.student_id = @studentId

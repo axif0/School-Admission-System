@@ -140,7 +140,7 @@ export const ApplicationPage: React.FC<ApplicationPageProps> = ({ studentId, t, 
   if (loading) {
     return (
       <div style={{ maxWidth: '650px', margin: '3rem auto', padding: '0 1rem', textAlign: 'center' }}>
-        <p style={{ color: '#64748b' }}>আবেদনের তথ্য লোড হচ্ছে...</p>
+        <p style={{ color: '#64748b' }}>{lang === 'bn' ? 'আবেদনের তথ্য লোড হচ্ছে...' : 'Loading application details...'}</p>
       </div>
     );
   }
@@ -302,13 +302,13 @@ export const ApplicationPage: React.FC<ApplicationPageProps> = ({ studentId, t, 
         }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             <div>
-              <span style={{ color: '#64748b', fontSize: '0.88rem', display: 'block' }}>ক্লাস / শিফট:</span>
+              <span style={{ color: '#64748b', fontSize: '0.88rem', display: 'block' }}>{lang === 'bn' ? 'ক্লাস / শিফট:' : 'Class / Shift:'}</span>
               <strong style={{ color: '#0f172a', fontSize: '1.1rem' }}>{classInfo?.name || hold.classId}</strong>
             </div>
             <div>
-              <span style={{ color: '#64748b', fontSize: '0.88rem', display: 'block' }}>শিক্ষার্থী আইডি:</span>
+              <span style={{ color: '#64748b', fontSize: '0.88rem', display: 'block' }}>{lang === 'bn' ? 'শিক্ষার্থী আইডি:' : 'Student ID:'}</span>
               <strong style={{ color: '#0f172a', fontSize: '1.05rem', fontFamily: 'monospace' }}>
-                {hold.studentId || studentId}
+                {hold.studentId || studentId || (lang === 'bn' ? 'উপরে জন্ম নিবন্ধন নম্বর দিন' : 'Enter ID in top bar')}
               </strong>
             </div>
           </div>

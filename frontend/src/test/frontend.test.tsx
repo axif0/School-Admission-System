@@ -407,7 +407,7 @@ describe('Frontend Comprehensive Unit & Component Test Suite', () => {
   });
 
   // ---- 6. CreateClassPage & MyApplicationsPage & ErrorBoundary ----
-  it('13. Submits CreateClassPage form with class name, totalSeats, and adminKey', async () => {
+  it('13. Submits CreateClassPage form with class name and totalSeats', async () => {
     const createClassSpy = vi.spyOn(api, 'createClass').mockResolvedValue({
       id: 'c_created',
       name: 'Grade 9 - Section A',
@@ -429,17 +429,14 @@ describe('Frontend Comprehensive Unit & Component Test Suite', () => {
     fireEvent.change(screen.getByLabelText(/Total Seats/i), {
       target: { value: '60' }
     });
-    fireEvent.change(screen.getByLabelText(/Admin Key/i), {
-      target: { value: 'my-admin-secret' }
-    });
 
     fireEvent.click(screen.getByRole('button', { name: /Save Class/i }));
 
     await waitFor(() => {
-      expect(createClassSpy).toHaveBeenCalledWith(
-        { name: 'Grade 9 - Section A', totalSeats: 60 },
-        'my-admin-secret'
-      );
+      expect(createClassSpy).toHaveBeenCalledWith({
+        name: 'Grade 9 - Section A',
+        totalSeats: 60
+      });
       expect(screen.getByText(/Class created successfully!/i)).toBeInTheDocument();
     });
   });

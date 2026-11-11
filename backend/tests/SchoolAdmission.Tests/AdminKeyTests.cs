@@ -19,8 +19,6 @@ public class AdminKeyTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task WhenAdminKeyUnset_PostClassesSucceedsWithoutHeader()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString, adminApiKey: null);
         var client = factory.CreateClient();
 
@@ -31,8 +29,6 @@ public class AdminKeyTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task WhenAdminKeyConfigured_EnforcesAuthentication()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         const string configuredSecret = "my-super-secret-admin-key-2026";
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString, adminApiKey: configuredSecret);
         var client = factory.CreateClient();
@@ -76,8 +72,6 @@ public class AdminKeyTests : IClassFixture<TestDatabaseFixture>
     [Fact]
     public async Task WhenStudentAuthSecretConfigured_EnforcesHmacTokenAndPreventsIdorSpoofing()
     {
-        if (!_fixture.PostgresAvailable) return;
-
         const string studentSecret = "hmac-student-signing-secret-2026";
         using var factory = new SchoolAdmissionFactory(_fixture.ConnectionString, studentAuthSecret: studentSecret);
         var client = factory.CreateClient();
