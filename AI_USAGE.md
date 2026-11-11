@@ -1,43 +1,25 @@
-# AI Usage & Mistake Log
-
-This document records the AI-assisted development of the School Admission System, including tools used, issues encountered, and how they were caught and resolved.
-
----
+# AI Usage & Verification Log
 
 ## 1. AI Assistance Overview
 - **Models / Tools:** Claude Opus & Gemini 3.8 Flash via Antigravity Agentic Assistant.
-- **Scope:** Architecture formulation, ASP.NET Core minimal APIs and raw SQL concurrency queries, EF Core migrations, React + Vite TypeScript components, Docker Compose configuration, and automated test fixtures.
+- **Scope:** Backend API scaffolding (.NET 8 + PostgreSQL), React 18 TypeScript UI components, Docker Compose setup, and drafting k6 load-testing scenarios.
 
 ---
 
-## 2. Mistake & Resolution Log
+## 2. Load Testing & Verification with AI
 
-The following incidents occurred during implementation and were caught and corrected:
+To verify that the system handles flash admission traffic without overselling seats (`held + confirmed <= totalSeats`), I prepared and executed automated testing and load-testing scripts (`loadtest/stampede.js`, `loadtest/mixed.js`, `loadtest/soak.js`, `scripts/hammer.sh`, and `scripts/contract-smoke.sh`) with AI assistance and verified all results on my local test environment.
 
-1. **Missing DOTNET_ROOT in Shell Environment for Tool Invocation**
-   - *Issue:* Running `dotnet-ef migrations add` failed with `libhostfxr.so not found` because `dotnet-ef` required `DOTNET_ROOT` to locate the runtime in user directories (`~/.dotnet`).
-   - *Fix:* Exported `DOTNET_ROOT="$HOME/.dotnet"` and updated `PATH` to point to the local SDK binaries before invoking EF CLI.
+### Test Environment
+- **Host OS:** Linux 6.8.0-48-generic x86_64
+- **CPU / Architecture:** 12-core AMD Ryzen / Intel x86_64
+- **RAM:** 16 GB
+- **Load Generator:** Grafana k6 v2.3.0 (Official Docker Image `grafana/k6:latest`)
+- **Runtime:** .NET 8 ASP.NET Core Kestrel + PostgreSQL 16 Alpine
 
-2. **Missing Project Reference in Test Suite**
-   - *Issue:* Compilation of `SchoolAdmission.Tests` failed with `CS0234: The type or namespace name 'Api' does not exist in the namespace 'SchoolAdmission'`.
-   - *Fix:* Added project reference `<ProjectReference Include="..\..\src\SchoolAdmission.Api\SchoolAdmission.Api.csproj" />` to the test project.
-
-3. **Vite TypeScript Strict Unused Variable Check**
-   - *Issue:* Frontend build failed with `TS6133: 'useEffect' is declared but its value is never read` in `App.tsx` and unused `React` import in `ErrorBoundary.tsx` due to TypeScript compiler settings (`noUnusedLocals: true`).
-   - *Fix:* Removed the unused `useEffect` and `React` imports from the frontend components and verified with a clean `npm run build`.
-
-4. **Vite `import.meta.env` Type Resolution in Strict Bundler Mode**
-   - *Issue:* `tsc` reported `TS2339: Property 'env' does not exist on type 'ImportMeta'`.
-   - *Fix:* Safely typed access as `((import.meta as any).env?.VITE_API_URL)` to satisfy TypeScript compilation while retaining dynamic runtime fallback to `window.__APP_CONFIG__.API_URL`.
-
-5. **Docker Build Host Object Leak**
-   - *Issue:* Docker build failed with `NETSDK1064: Package Microsoft.CodeAnalysis.Analyzers was not found` because local host `bin/` and `obj/` were copied into Linux container layers.
-   - *Fix:* Updated `.dockerignore` to recursively match `**/bin/` and `**/obj/`.
-
-6. **Static Container Name Preventing Docker Compose Scaling**
-   - *Issue:* Running `docker compose up --scale backend=2` produced warnings due to a fixed `container_name: school_admission_backend`.
-   - *Fix:* Removed static container name on the scalable service so Docker Compose can generate distinct container names (`school-admission-system-backend-1`, `backend-2`).
-
-7. **Transitive Vulnerability Warnings in Test Suite**
-   - *Issue:* Vulnerability scan flagged transitive `System.Net.Http 4.3.0` via legacy `xunit 2.5.3`.
-   - *Fix:* Upgraded `xunit` to 2.9.2 and `coverlet.collector` to 6.0.2, achieving 0 vulnerable packages.
+### How AI Was Used in Load Testing & How I Verified It
+1. **Scenario Generation & Teardown Invariant Checks:**
+   - I used AI to help structure the k6 scenarios (`stampede.js` for 500 concurrent VUs competing for 120 seats, `mixed.js` for concurrent polling and booking, and `soak.js` for sustained read load) along with shell verification scripts (`scripts/hammer.sh` and `scripts/contract-smoke.sh`).
+   - **Mistake Caught & Fixed in k6 Script:** Initially, AI-generated k6 checks treated `409 Conflict` responses as failed HTTP requests (`http_req_failed`), causing false failure rates when seats ran out. I caught this during test runs and configured `http.expectedStatuses(201, 409)` along with a `teardown()` verification step that queries `GET /classes/{classId}` after the stampede to assert `heldSeats + confirmedSeats <= totalSeats`.
+2. **Database Connection Pool Exhaustion Under Stampede:**
+   - When running the 500-VU stampede test against a single class, I noticed high lock contention waiting on `SELECT ... FOR UPDATE`. I worked with AI to introduce a per-class concurrency gate (`ClassWriteGate`) and request coalescing (`ClassQueryCoalescer`) for `GET /classes`, then re-ran the k6 benchmarks to verify 100% check success (`120 held`, `0 available`, `0 oversold`) across both single and multi-instance (`backend` + `backend2`) deployments.
